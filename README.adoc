@@ -1,0 +1,9 @@
+= Oxbow
+
+Oxbow is a simple project to take an existing storage location which contains
+link:https://parquet.apache.org[Apache Parquet] files into a
+link:https://delta.io[Delta Lake table]. It is intended to run both as an AWS
+Lambda or as a command line application.
+
+The project is named after link:https://en.wikipedia.org/wiki/Oxbow_lake[Oxbow
+lakes] to keep with the lake theme.

@@ -4,4 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "*"
 deltalake = { git = "https://github.com/delta-io/delta-rs", branch = "main", features = ["s3", "json"]}
+gumdrop = { version = "0.8", optional = true }
+log = "0.4"
+pretty_env_logger = "0.4"
+tokio = { version = "1", features = ["macros"] }
+
+[features]
+default = ["cli"]
+cli = ["gumdrop"]

@@ -7,3 +7,19 @@ Lambda or as a command line application.
 
 The project is named after link:https://en.wikipedia.org/wiki/Oxbow_lake[Oxbow
 lakes] to keep with the lake theme.
+
+
+== Design
+
+=== Command Line
+
+When running `oxbow` via command line it is a _one time operation_. It will
+take an existing directory or location full of `.parquet` files and create a
+Delta table out of it.
+
+
+=== Lambda
+
+When running `oxbow` inside of a AWS Lambda function it should be configured
+with an S3 Event Trigger and create new commits to a Delta Lake table any time
+a `.parquet` file is added to the bucket/prefix.

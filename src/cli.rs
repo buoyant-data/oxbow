@@ -2,11 +2,13 @@
  * The CLI module contains all the necessary code for running oxbow in the command line.
  */
 
+use futures::StreamExt;
 use gumdrop::Options;
 use log::*;
 use url::Url;
 
-use std::path::PathBuf;
+use deltalake::Path;
+use std::collections::HashMap;
 
 /*
  * Flags is a structure for managing command linke parameters
@@ -43,7 +45,16 @@ pub async fn main() -> Result<(), anyhow::Error> {
     match deltalake::open_table(&location).await {
         Err(e) => {
             debug!("No Delta table at {}: {:?}", location, e);
-            //let _files = discover_parquet_files(&location).await?;
+            /*
+             * Parse the given location as a URL in a way that can be passed into
+             * some delta APIs
+             */
+            let location = match Url::parse(&location) {
+                Ok(parsed) => parsed,
+                Err(_) => Url::from_file_path(&location)
+                    .expect("Failed to parse the location as a file path"),
+            };
+            let _files = discover_parquet_files(&location).await?;
         }
         Ok(table) => {
             warn!("There is already a Delta table at: {}", table);
@@ -56,8 +67,34 @@ pub async fn main() -> Result<(), anyhow::Error> {
 /*
  * Discover `.parquet` files which are present in the location
  */
-async fn discover_parquet_files(_location: &Url) -> deltalake::DeltaResult<Vec<PathBuf>> {
-    let result = vec![];
+async fn discover_parquet_files(location: &Url) -> deltalake::DeltaResult<Vec<Path>> {
+    use deltalake::storage::DeltaObjectStore;
+    use deltalake::ObjectStore;
+
+    let options = HashMap::new();
+    let store = DeltaObjectStore::try_new(location.clone(), options).expect("Failed to make store");
+
+    let mut result = vec![];
+    let mut iter = store.list(None).await?;
+
+    /*
+     * NOTE: There is certainly some way to make this more compact
+     */
+    while let Some(path) = iter.next().await {
+        // Result<ObjectMeta> has been yielded
+        if let Ok(meta) = path {
+            debug!("Discovered file: {:?}", meta.location);
+
+            if let Some(ext) = meta.location.extension() {
+                match ext {
+                    "parquet" => {
+                        result.push(meta.location);
+                    }
+                    &_ => {}
+                }
+            }
+        }
+    }
     Ok(result)
 }
 
@@ -105,5 +142,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_discover_parquet_files_full_dir() {}
+    async fn test_discover_parquet_files_full_dir() {
+        let path = std::fs::canonicalize("./hive/deltatbl-non-partitioned")
+            .expect("Failed to canonicalize");
+        let url = Url::from_file_path(path).expect("Failed to parse local path");
+
+        let files = discover_parquet_files(&url)
+            .await
+            .expect("Failed to discover parquet files");
+
+        assert_eq!(files.len(), 2);
+    }
 }

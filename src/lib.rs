@@ -6,13 +6,49 @@ use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
 use deltalake::storage::DeltaObjectStore;
-use deltalake::{ObjectMeta, ObjectStore};
+use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
 use futures::StreamExt;
 use log::*;
 use url::Url;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/*
+ * convert is the main function to be called by the CLI or other "one shot" executors which just
+ * need to take a given location and convert it all at once
+ */
+pub async fn convert(location: &str) -> DeltaResult<DeltaTable> {
+    match deltalake::open_table(&location).await {
+        Err(e) => {
+            debug!("No Delta table at {}: {:?}", location, e);
+            /*
+             * Parse the given location as a URL in a way that can be passed into
+             * some delta APIs
+             */
+            let location = match Url::parse(&location) {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    let absolute = std::fs::canonicalize(&location)
+                        .expect("Failed to canonicalize table location");
+                    Url::from_file_path(&absolute)
+                        .expect("Failed to parse the location as a file path")
+                }
+            };
+            let store = object_store_for(&location);
+            let files = discover_parquet_files(store.clone()).await?;
+            debug!(
+                "Files identified for turning into a delta table: {:?}",
+                files
+            );
+            create_table_with(&files, store.clone()).await
+        }
+        Ok(table) => {
+            warn!("There is already a Delta table at: {}", table);
+            Ok(table)
+        }
+    }
+}
 
 /*
  * Create the ObjectStore for the given location
@@ -58,7 +94,7 @@ pub async fn discover_parquet_files(
 pub async fn create_table_with(
     files: &Vec<ObjectMeta>,
     store: Arc<DeltaObjectStore>,
-) -> deltalake::DeltaResult<()> {
+) -> DeltaResult<DeltaTable> {
     use deltalake::operations::create::CreateBuilder;
     use deltalake::schema::Schema;
 
@@ -83,15 +119,12 @@ pub async fn create_table_with(
      * Create and persist the table
      */
     let actions = add_actions_for(&files);
-    let table = CreateBuilder::new()
+    CreateBuilder::new()
         .with_object_store(store.clone())
         .with_columns(schema.get_fields().clone())
         .with_actions(actions)
         .with_save_mode(SaveMode::Ignore)
         .await
-        .expect("Failed to create CreateBuilder");
-
-    Ok(())
 }
 
 /*

@@ -4,7 +4,6 @@
 
 use gumdrop::Options;
 use log::*;
-use url::Url;
 
 /*
  * Flags is a structure for managing command linke parameters
@@ -38,37 +37,9 @@ pub async fn main() -> Result<(), anyhow::Error> {
     let location = table_location(&flags)?;
     info!("Using the table location of: {:?}", location);
 
-    match deltalake::open_table(&location).await {
-        Err(e) => {
-            debug!("No Delta table at {}: {:?}", location, e);
-            /*
-             * Parse the given location as a URL in a way that can be passed into
-             * some delta APIs
-             */
-            let location = match Url::parse(&location) {
-                Ok(parsed) => parsed,
-                Err(_) => {
-                    let absolute = std::fs::canonicalize(&location)
-                        .expect("Failed to canonicalize table location");
-                    Url::from_file_path(&absolute)
-                        .expect("Failed to parse the location as a file path")
-                }
-            };
-            let store = oxbow::object_store_for(&location);
-            let files = oxbow::discover_parquet_files(store.clone()).await?;
-            debug!(
-                "Files identified for turning into a delta table: {:?}",
-                files
-            );
-            oxbow::create_table_with(&files, store.clone())
-                .await
-                .expect("Failed to create the table!");
-        }
-        Ok(table) => {
-            warn!("There is already a Delta table at: {}", table);
-        }
-    }
-
+    oxbow::convert(&location)
+        .await
+        .expect("Failed to convert location");
     Ok(())
 }
 

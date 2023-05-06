@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "*"
+chrono = "*"
 deltalake = { version = "0.10.0", features = ["s3", "json"]}
 futures = "*"
 gumdrop = { version = "0.8", optional = true }

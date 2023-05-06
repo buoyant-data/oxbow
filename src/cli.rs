@@ -47,10 +47,22 @@ pub async fn main() -> Result<(), anyhow::Error> {
              */
             let location = match Url::parse(&location) {
                 Ok(parsed) => parsed,
-                Err(_) => Url::from_file_path(&location)
-                    .expect("Failed to parse the location as a file path"),
+                Err(_) => {
+                    let absolute = std::fs::canonicalize(&location)
+                        .expect("Failed to canonicalize table location");
+                    Url::from_file_path(&absolute)
+                        .expect("Failed to parse the location as a file path")
+                }
             };
-            let _files = oxbow::discover_parquet_files(&location).await?;
+            let store = oxbow::object_store_for(&location);
+            let files = oxbow::discover_parquet_files(store.clone()).await?;
+            debug!(
+                "Files identified for turning into a delta table: {:?}",
+                files
+            );
+            oxbow::create_table_with(&files, store.clone())
+                .await
+                .expect("Failed to create the table!");
         }
         Ok(table) => {
             warn!("There is already a Delta table at: {}", table);

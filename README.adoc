@@ -23,3 +23,7 @@ Delta table out of it.
 When running `oxbow` inside of a AWS Lambda function it should be configured
 with an S3 Event Trigger and create new commits to a Delta Lake table any time
 a `.parquet` file is added to the bucket/prefix.
+
+== Licensing
+
+This repository is intentionally licensed under the link:https://www.gnu.org/licenses/agpl-3.0.en.html[AGPL 3.0]. If your organization is interested in re-licensing this function for re-use, contact me via email for commercial licensing terms: `rtyler@brokenco.de`

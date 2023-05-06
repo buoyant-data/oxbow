@@ -5,13 +5,14 @@ use deltalake::action::{Action, Add, SaveMode};
 use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
+use deltalake::partitions::DeltaTablePartition;
 use deltalake::storage::DeltaObjectStore;
 use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
 use futures::StreamExt;
 use log::*;
 use url::Url;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /*
@@ -122,9 +123,45 @@ pub async fn create_table_with(
     CreateBuilder::new()
         .with_object_store(store.clone())
         .with_columns(schema.get_fields().clone())
+        .with_partition_columns(partition_columns_from(&files))
         .with_actions(actions)
         .with_save_mode(SaveMode::Ignore)
         .await
+}
+
+/*
+ * Take an iterator of files and determine what looks like a partition column from it
+ */
+fn partition_columns_from(files: &Vec<ObjectMeta>) -> Vec<String> {
+    // The HashSet is only to prevent collecting redundant partitions
+    let mut results = HashSet::new();
+
+    /*
+     * The nested iteration here is required to evaluate nested partitions
+     */
+    for file in files.iter() {
+        let _ = file
+            .location
+            .as_ref()
+            .split("/")
+            .map(|f| DeltaTablePartition::try_from(f))
+            .flatten()
+            .map(|p| results.insert(p.key.to_string()))
+            .collect::<Vec<_>>();
+    }
+
+    results.into_iter().collect()
+}
+
+/*
+ * Return all the partitions from the given path buf
+ */
+fn partitions_from(path_str: &str) -> Vec<DeltaTablePartition> {
+    path_str
+        .split("/")
+        .map(|segment| DeltaTablePartition::try_from(segment))
+        .flatten()
+        .collect()
 }
 
 /*
@@ -144,7 +181,10 @@ fn add_actions_for(files: &Vec<ObjectMeta>) -> Vec<Action> {
             stats: None,
             stats_parsed: None,
             tags: None,
-            partition_values: HashMap::default(),
+            partition_values: partitions_from(om.location.as_ref())
+                .iter()
+                .map(|p| (p.key.into(), Some(p.value.into())))
+                .collect(),
             partition_values_parsed: None,
         })
         .map(|a| Action::add(a))
@@ -175,6 +215,7 @@ fn find_smallest_file(files: &Vec<ObjectMeta>) -> Option<&ObjectMeta> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::hash::Hash;
 
     use chrono::prelude::Utc;
     use deltalake::Path;
@@ -252,5 +293,77 @@ mod tests {
         }];
         let result = add_actions_for(&files);
         assert_eq!(1, result.len());
+    }
+
+    #[test]
+    fn partition_columns_from_empty() {
+        let expected: Vec<String> = vec![];
+        assert_eq!(expected, partition_columns_from(&vec![]));
+    }
+
+    #[test]
+    fn partition_columns_from_non_partitioned() {
+        let expected: Vec<String> = vec![];
+        let files = vec![
+            ObjectMeta {
+                location: Path::from("foo/large"),
+                last_modified: Utc::now(),
+                size: 4096,
+            },
+            ObjectMeta {
+                location: Path::from("foo/small"),
+                last_modified: Utc::now(),
+                size: 1024,
+            },
+        ];
+        assert_eq!(expected, partition_columns_from(&files));
+    }
+
+    #[test]
+    fn partition_columns_from_single_partition() {
+        let expected: Vec<String> = vec!["c2".into()];
+
+        let files = vec![
+            ObjectMeta {
+                location: Path::from("c2=foo1/large"),
+                last_modified: Utc::now(),
+                size: 4096,
+            },
+            ObjectMeta {
+                location: Path::from("c2=foo2/small"),
+                last_modified: Utc::now(),
+                size: 1024,
+            },
+        ];
+        assert_eq!(expected, partition_columns_from(&files));
+    }
+
+    fn assert_unordered_eq<T>(left: &[T], right: &[T])
+    where
+        T: Eq + Hash + std::fmt::Debug,
+    {
+        let left: HashSet<_> = left.iter().collect();
+        let right: HashSet<_> = right.iter().collect();
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn partition_columns_from_multiple_partition() {
+        let expected: Vec<String> = vec!["c2".into(), "c3".into()];
+
+        let files = vec![
+            ObjectMeta {
+                location: Path::from("c2=foo1/c3=bar1/large"),
+                last_modified: Utc::now(),
+                size: 4096,
+            },
+            ObjectMeta {
+                location: Path::from("c2=foo2/c3=bar2/small"),
+                last_modified: Utc::now(),
+                size: 1024,
+            },
+        ];
+        assert_unordered_eq(&expected, &partition_columns_from(&files));
     }
 }

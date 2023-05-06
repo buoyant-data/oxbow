@@ -31,7 +31,7 @@ into a Delta table!
 [source,bash]
 ----
 % oxbow --table ./path/to/my/parquet-files
----
+----
 
 .Files on AWS
 [source,bash]

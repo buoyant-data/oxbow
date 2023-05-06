@@ -40,7 +40,7 @@ async fn non_partitioned_table() -> Result<(), anyhow::Error> {
 #[tokio::test]
 async fn partitioned_table() -> Result<(), anyhow::Error> {
     let original_table = "tests/data/hive/deltatbl-partitioned";
-    let table_str = setup(&original_table).await?;
+    let table_str = setup(original_table).await?;
     let original_table = deltalake::open_table(&original_table).await?;
     let mut expected_partitions: Vec<String> = vec![];
     for partition in original_table.get_partition_values() {

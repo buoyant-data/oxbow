@@ -27,12 +27,12 @@ pub async fn convert(location: &str) -> DeltaResult<DeltaTable> {
              * Parse the given location as a URL in a way that can be passed into
              * some delta APIs
              */
-            let location = match Url::parse(&location) {
+            let location = match Url::parse(location) {
                 Ok(parsed) => parsed,
                 Err(_) => {
-                    let absolute = std::fs::canonicalize(&location)
+                    let absolute = std::fs::canonicalize(location)
                         .expect("Failed to canonicalize table location");
-                    Url::from_file_path(&absolute)
+                    Url::from_file_path(absolute)
                         .expect("Failed to parse the location as a file path")
                 }
             };
@@ -119,11 +119,11 @@ pub async fn create_table_with(
     /*
      * Create and persist the table
      */
-    let actions = add_actions_for(&files);
+    let actions = add_actions_for(files);
     CreateBuilder::new()
         .with_object_store(store.clone())
         .with_columns(schema.get_fields().clone())
-        .with_partition_columns(partition_columns_from(&files))
+        .with_partition_columns(partition_columns_from(files))
         .with_actions(actions)
         .with_save_mode(SaveMode::Ignore)
         .await
@@ -132,7 +132,7 @@ pub async fn create_table_with(
 /*
  * Take an iterator of files and determine what looks like a partition column from it
  */
-fn partition_columns_from(files: &Vec<ObjectMeta>) -> Vec<String> {
+fn partition_columns_from(files: &[ObjectMeta]) -> Vec<String> {
     // The HashSet is only to prevent collecting redundant partitions
     let mut results = HashSet::new();
 
@@ -143,9 +143,8 @@ fn partition_columns_from(files: &Vec<ObjectMeta>) -> Vec<String> {
         let _ = file
             .location
             .as_ref()
-            .split("/")
-            .map(|f| DeltaTablePartition::try_from(f))
-            .flatten()
+            .split('/')
+            .flat_map(DeltaTablePartition::try_from)
             .map(|p| results.insert(p.key.to_string()))
             .collect::<Vec<_>>();
     }
@@ -158,9 +157,8 @@ fn partition_columns_from(files: &Vec<ObjectMeta>) -> Vec<String> {
  */
 fn partitions_from(path_str: &str) -> Vec<DeltaTablePartition> {
     path_str
-        .split("/")
-        .map(|segment| DeltaTablePartition::try_from(segment))
-        .flatten()
+        .split('/')
+        .flat_map(DeltaTablePartition::try_from)
         .collect()
 }
 
@@ -170,7 +168,7 @@ fn partitions_from(path_str: &str) -> Vec<DeltaTablePartition> {
  * This is a critical translation layer between discovered parquet files and how those would be
  * represented inside of the log
  */
-fn add_actions_for(files: &Vec<ObjectMeta>) -> Vec<Action> {
+fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
     files
         .iter()
         .map(|om| Add {
@@ -187,7 +185,7 @@ fn add_actions_for(files: &Vec<ObjectMeta>) -> Vec<Action> {
                 .collect(),
             partition_values_parsed: None,
         })
-        .map(|a| Action::add(a))
+        .map(Action::add)
         .collect()
 }
 
@@ -198,14 +196,14 @@ fn add_actions_for(files: &Vec<ObjectMeta>) -> Vec<Action> {
  * discern schema information
  */
 fn find_smallest_file(files: &Vec<ObjectMeta>) -> Option<&ObjectMeta> {
-    if files.len() == 0 {
+    if files.is_empty() {
         return None;
     }
 
     let mut smallest = &files[0];
     for file in files.iter() {
         if file.size < smallest.size {
-            smallest = &file;
+            smallest = file;
         }
     }
 

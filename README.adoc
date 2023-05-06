@@ -1,5 +1,13 @@
-= Oxbow
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:toc: macro
 
+= Oxbow
 Oxbow is a simple project to take an existing storage location which contains
 link:https://parquet.apache.org[Apache Parquet] files into a
 link:https://delta.io[Delta Lake table]. It is intended to run both as an AWS
@@ -7,6 +15,39 @@ Lambda or as a command line application.
 
 The project is named after link:https://en.wikipedia.org/wiki/Oxbow_lake[Oxbow
 lakes] to keep with the lake theme.
+
+== Using
+
+=== Command Line
+
+Executing `cargo build --release` from a clone of this repository will build
+the command line binary `oxbow` which can be used directly to convert a
+directory full of `.parquet` files into a Delta table.
+
+This is an _in place_ operation and will convert the specified table location
+into a Delta table!
+
+.Simple local files
+[source,bash]
+----
+% oxbow --table ./path/to/my/parquet-files
+---
+
+.Files on AWS
+[source,bash]
+----
+% export AWS_REGION=us-west-2
+% export AWS_SECRET_ACCESS_KEY=xxxx
+# Set other AWS environment variables
+% oxbow --table s3://my-bucket/prefix/to/parquet
+----
+
+=== Lambda
+
+[NOTE]
+====
+The Lambda support is not yet implemented, come back soon!
+====
 
 
 == Design

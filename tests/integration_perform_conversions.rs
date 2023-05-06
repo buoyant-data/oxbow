@@ -7,6 +7,34 @@ use tempfile::*;
 
 use std::path::Path;
 
+/* Just test all the dang tables to make sure they convert properly */
+#[ignore]
+#[tokio::test]
+async fn test_all_tables() -> Result<(), anyhow::Error> {
+    let tables = Path::new(&std::env::var("CARGO_MANIFEST_DIR")?).join("tests/data/hive");
+    for path in std::fs::read_dir(tables)? {
+        if let Ok(dir) = path {
+            let dir = dir.path();
+            let dir_str = dir.to_str().expect("Failed to make dir_str");
+            let table_str = setup(&dir_str).await?;
+
+            let table = oxbow::convert(&table_str).await;
+            assert!(
+                table.is_ok(),
+                "Failure on convesion for {}: {:?}",
+                table_str,
+                table
+            );
+            assert!(
+                table?.get_files().len() > 0,
+                "Expected four files converted for {}",
+                dir_str
+            );
+        }
+    }
+    Ok(())
+}
+
 /*
  * Ensure that a non-partitioned table will properly be created
  */

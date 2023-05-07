@@ -16,8 +16,11 @@ async fn main() -> Result<(), anyhow::Error> {
     info!("Starting oxbow");
 
     if cfg!(feature = "lambda") {
-        lambda::main().await
+        #[cfg(feature = "lambda")]
+        lambda::main().await.expect("Failed to run lambda main");
     } else {
-        cli::main().await
+        #[cfg(feature = "cli")]
+        cli::main().await.expect("Failed to run CLI main");
     }
+    Ok(())
 }

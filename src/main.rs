@@ -17,8 +17,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     if cfg!(feature = "lambda") {
         lambda::main().await
-    }
-    else {
+    } else {
         cli::main().await
     }
 }

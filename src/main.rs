@@ -4,15 +4,21 @@
 
 use log::*;
 
+#[cfg(feature = "cli")]
 mod cli;
+#[cfg(feature = "lambda")]
+mod lambda;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    #[cfg(debug_assertions)]
     pretty_env_logger::init();
 
     info!("Starting oxbow");
 
-    #[cfg(feature = "cli")]
-    cli::main().await
+    if cfg!(feature = "lambda") {
+        lambda::main().await
+    }
+    else {
+        cli::main().await
+    }
 }

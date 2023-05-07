@@ -8,16 +8,35 @@ anyhow = "*"
 chrono = "*"
 deltalake = { version = "0.10.0", features = ["s3", "json"]}
 futures = "*"
-gumdrop = { version = "0.8", optional = true }
 log = "0.4"
 pretty_env_logger = "0.4"
 tokio = { version = "1", features = ["macros"] }
 url = "2.3"
 
+# cli requirements
+gumdrop = { version = "0.8", optional = true }
+
+# lambda requirements
+aws_lambda_events = { version = "0.7", optional = true }
+lambda_runtime = { version = "0.7", optional = true }
+rusoto_core = { version = "*", default-features = false, features = ["rustls"], optional = true }
+rusoto_credential = { version = "*", optional = true }
+rusoto_s3 = { version = "*", default-features = false, features = ["rustls"], optional = true }
+serde = { version = "*", features = ["rc"], optional = true }
+serde_json = { version = "1", optional = true }
+
 [features]
 default = ["cli"]
 cli = ["gumdrop"]
+lambda = ["aws_lambda_events", "lambda_runtime", "rusoto_core", "rusoto_credential", "rusoto_s3", "serde", "serde_json" ]
 
 [dev-dependencies]
 fs_extra = "1"
 tempfile = "*"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+incremental = false
+opt-level = "z"

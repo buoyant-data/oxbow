@@ -11,14 +11,14 @@ futures = "*"
 log = "0.4"
 pretty_env_logger = "0.4"
 tokio = { version = "1", features = ["macros"] }
-url = "2.3"
+url = { version = "2.3", features = ["serde"] }
 
 # cli requirements
 gumdrop = { version = "0.8", optional = true }
 
 # lambda requirements
 aws_lambda_events = { version = "0.7", optional = true }
-lambda_runtime = { version = "0.7", optional = true }
+lambda_runtime = { version = "0.8", optional = true }
 rusoto_core = { version = "*", default-features = false, features = ["rustls"], optional = true }
 rusoto_credential = { version = "*", optional = true }
 rusoto_s3 = { version = "*", default-features = false, features = ["rustls"], optional = true }

@@ -4,11 +4,16 @@
  * This can be compiled with the `lambda` feature
  */
 
-use aws_lambda_events::s3::S3Event;
+use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
+use chrono::prelude::*;
+use deltalake::{ObjectMeta, Path};
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::*;
 use serde_json::json;
 use serde_json::Value;
+use url::Url;
+
+use std::collections::HashMap;
 
 pub async fn main() -> Result<(), anyhow::Error> {
     info!("Starting the Lambda runtime");
@@ -20,10 +25,98 @@ pub async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
-    info!("Receiving event: {:?}", event);
-    Ok(json!({
-        "message": "",
-    }))
+    use deltalake::action::*;
+
+    debug!("Receiving event: {:?}", event);
+
+    /*
+     * The response variable will be spat out at the end of the Lambda, since this Lambda is
+     * intended to be executed by S3 Bucket Notifications this doesn't really serve any useful
+     * purposes outside of manual testing
+     */
+    let mut response: HashMap<Url, Vec<String>> = HashMap::new();
+    let by_table = objects_by_table(&event.payload.records);
+
+    for table in by_table.keys() {
+        let location = Url::parse(&table).expect("Failed to turn a table into a URL");
+        let files = by_table
+            .get(table)
+            .expect("Failed to get the files for a table, impossible!");
+        // messages is just for sending responses out of the lambda
+        let mut messages = vec![];
+
+        if let Ok(table) = deltalake::open_table(&table).await {
+            // add the objects to the existing table
+            let actions = oxbow::add_actions_for(&files);
+            let result = deltalake::operations::transaction::commit(
+                table.object_store().as_ref(),
+                &actions,
+                DeltaOperation::Write {
+                    mode: SaveMode::Append,
+                    // TODO: actually use the partitions off the object key
+                    partition_by: None,
+                    predicate: None,
+                },
+                table.get_state(),
+                None,
+            )
+            .await;
+
+            if result.is_err() {
+                let message = format!("Failed to append to the table {}: {:?}", location, result);
+                error!("{}", &message);
+                messages.push(message);
+            } else {
+                messages.push(format!("Successfully appended to table at {}", location));
+            }
+        } else {
+            // create the table with our objects
+            info!("Creating new Delta table at: {}", location);
+            let store = oxbow::object_store_for(&location);
+            let table = oxbow::create_table_with(&files, store.clone()).await;
+            if table.is_err() {
+                let message = format!("Failed to create new Delta table: {:?}", table);
+                error!("{}", &message);
+                messages.push(message);
+            } else {
+                messages.push(format!("Successfully created table at {}", location));
+            }
+        }
+
+        response.insert(location, messages);
+    }
+
+    Ok(json!(response))
+}
+
+/*
+ * Group the objects from the notification based on the delta tables they should be added to.
+ *
+ * There's a possibility that an S3 bucket notification will have objects mixed in which should be
+ * destined for different delta tables. Rather than re-opening/loading the table for each object as
+ * we iterate the records, we can group them based on the delta table and then create the
+ * appropriate transactions
+ */
+fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<ObjectMeta>> {
+    let mut result = HashMap::new();
+
+    for record in records.iter() {
+        if let Some(bucket) = &record.s3.bucket.name {
+            let om = into_object_meta(&record.s3.object);
+            let log_path = infer_log_path_from(om.location.as_ref());
+
+            let key = format!("s3://{}/{}", bucket, log_path);
+
+            if !result.contains_key(&key) {
+                result.insert(key.clone(), vec![]);
+            }
+            if let Some(objects) = result.get_mut(&key) {
+                objects.push(om);
+            }
+        }
+    }
+
+    result
 }
 
 /*
@@ -62,22 +155,28 @@ fn infer_log_path_from(path: &str) -> String {
     root.join("/")
 }
 
+/*
+ * Convert an [`S3Object`] into an [`ObjectMeta`] for use in the creation of Delta transactions
+ *
+ * This is a _lossy_ conversion since the two structs do not share the same set of information,
+ * therefore this conversion is really only taking the path of the object and the size
+ */
+fn into_object_meta(s3object: &S3Object) -> ObjectMeta {
+    ObjectMeta {
+        size: s3object.size.unwrap_or(0) as usize,
+        last_modified: Utc::now(),
+        location: Path::from(s3object.key.clone().unwrap_or("".to_string())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn deser_event() {
-        let buf =
-            std::fs::read_to_string("tests/data/s3-put-event.json").expect("Failed to read file");
-        let _event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
-    }
-
-    #[test]
     fn infer_log_path_from_object() {
         let object = "some/path/to/a/prefix/alpha.parquet";
         let expected = "some/path/to/a/prefix";
-
         assert_eq!(expected, infer_log_path_from(&object));
     }
 
@@ -99,29 +198,55 @@ mod tests {
         assert_eq!(expected, infer_log_path_from(&object));
     }
 
-    #[ignore]
     #[test]
-    fn tease_apart_events() {
-        use std::collections::HashMap;
+    fn s3event_object_to_objectmeta() {
+        let s3object = S3Object {
+            key: Some("some/path/to/a/prefix/alpha.parquet".into()),
+            size: Some(1024),
+            url_decoded_key: None,
+            version_id: None,
+            e_tag: None,
+            sequencer: None,
+        };
 
+        let expected = deltalake::ObjectMeta {
+            location: deltalake::Path::from("some/path/to/a/prefix/alpha.parquet"),
+            last_modified: Utc::now(),
+            size: 1024,
+        };
+
+        let result = into_object_meta(&s3object);
+        assert_eq!(expected.location, result.location);
+        assert_eq!(expected.size, result.size);
+    }
+
+    #[test]
+    fn group_objects_to_tables() {
         let buf = std::fs::read_to_string("tests/data/s3-event-multiple.json")
             .expect("Failed to read file");
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
-        assert_eq!(2, event.records.len());
-        let mut files: HashMap<String, Vec<String>> = HashMap::new();
+        assert_eq!(3, event.records.len());
 
-        for record in event.records.iter() {
-            let bucket = record.s3.bucket.name.clone().unwrap();
-            if let Some(file) = &record.s3.object.key {
-                if !files.contains_key(&bucket) {
-                    files.insert(bucket.clone(), vec![]);
-                }
-                if let Some(v) = files.get_mut(&bucket) {
-                    v.push(file.into());
-                }
-            }
-        }
+        let groupings = objects_by_table(&event.records);
 
-        assert!(false);
+        assert_eq!(2, groupings.keys().len());
+
+        let table_one = groupings
+            .get("s3://example-bucket/some/first-prefix")
+            .expect("Failed to get the first table");
+        assert_eq!(
+            1,
+            table_one.len(),
+            "Shoulid only be one object in table one"
+        );
+
+        let table_two = groupings
+            .get("s3://example-bucket/some/prefix")
+            .expect("Failed to get the second table");
+        assert_eq!(
+            2,
+            table_two.len(),
+            "Shoulid only be two objects in table two"
+        );
     }
 }

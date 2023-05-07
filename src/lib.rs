@@ -168,7 +168,7 @@ fn partitions_from(path_str: &str) -> Vec<DeltaTablePartition> {
  * This is a critical translation layer between discovered parquet files and how those would be
  * represented inside of the log
  */
-fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
+pub fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
     files
         .iter()
         .map(|om| Add {

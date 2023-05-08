@@ -3,7 +3,7 @@
 
 resource "aws_lambda_function" "oxbow" {
   description   = "A simple lambda for converting parquet files to delta tables"
-  filename      = "target/lambda/oxbow/bootstrap.zip"
+  filename      = "target/lambda/oxbow-lambda/bootstrap.zip"
   function_name = "oxbow-conversion"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "provided"

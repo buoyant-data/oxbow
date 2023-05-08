@@ -31,7 +31,10 @@ impl Default for Flags {
 /*
  * Main entrypoint for the command line
  */
-pub async fn main() -> Result<(), anyhow::Error> {
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    pretty_env_logger::init();
+    info!("Starting oxbow");
     let flags = Flags::parse_args_default_or_exit();
     debug!("Options as read: {:?}", flags);
     let location = table_location(&flags)?;

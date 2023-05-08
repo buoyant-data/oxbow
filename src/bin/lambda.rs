@@ -16,7 +16,10 @@ use url::Url;
 
 use std::collections::HashMap;
 
-pub async fn main() -> Result<(), anyhow::Error> {
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    pretty_env_logger::init();
+    info!("Starting oxbow");
     info!("Starting the Lambda runtime");
     let func = service_fn(func);
     lambda_runtime::run(func)

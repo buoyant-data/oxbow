@@ -1,7 +1,7 @@
 /*
  * The lib module contains the business logic of oxbow, regardless of the interface implementation
  */
-use deltalake::action::{Action, Add, SaveMode};
+use deltalake::action::*;
 use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
@@ -127,6 +127,26 @@ pub async fn create_table_with(
         .with_actions(actions)
         .with_save_mode(SaveMode::Ignore)
         .await
+}
+
+/*
+ * Append the given files to an already existing and initialized Delta Table
+ */
+pub async fn append_to_table(files: &[ObjectMeta], table: &mut DeltaTable) -> DeltaResult<i64> {
+    let actions = add_actions_for(files);
+
+    deltalake::operations::transaction::commit(
+        table.object_store().as_ref(),
+        &actions,
+        DeltaOperation::Write {
+            mode: SaveMode::Append,
+            partition_by: Some(partition_columns_from(&files)),
+            predicate: None,
+        },
+        table.get_state(),
+        None,
+    )
+    .await
 }
 
 /*

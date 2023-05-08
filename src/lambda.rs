@@ -25,8 +25,6 @@ pub async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
-    use deltalake::action::*;
-
     debug!("Receiving event: {:?}", event);
 
     /*
@@ -45,22 +43,8 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
 
-        if let Ok(table) = deltalake::open_table(&table).await {
-            // add the objects to the existing table
-            let actions = oxbow::add_actions_for(&files);
-            let result = deltalake::operations::transaction::commit(
-                table.object_store().as_ref(),
-                &actions,
-                DeltaOperation::Write {
-                    mode: SaveMode::Append,
-                    // TODO: actually use the partitions off the object key
-                    partition_by: None,
-                    predicate: None,
-                },
-                table.get_state(),
-                None,
-            )
-            .await;
+        if let Ok(mut table) = deltalake::open_table(&table).await {
+            let result = oxbow::append_to_table(&files, &mut table).await;
 
             if result.is_err() {
                 let message = format!("Failed to append to the table {}: {:?}", location, result);
@@ -74,6 +58,7 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
             info!("Creating new Delta table at: {}", location);
             let store = oxbow::object_store_for(&location);
             let table = oxbow::create_table_with(&files, store.clone()).await;
+
             if table.is_err() {
                 let message = format!("Failed to create new Delta table: {:?}", table);
                 error!("{}", &message);

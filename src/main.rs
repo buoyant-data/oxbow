@@ -22,5 +22,6 @@ async fn main() -> Result<(), anyhow::Error> {
         #[cfg(feature = "cli")]
         cli::main().await.expect("Failed to run CLI main");
     }
+    info!("Exiting function");
     Ok(())
 }

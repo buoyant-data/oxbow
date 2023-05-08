@@ -30,6 +30,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     let dynamodb_client = rusoto_dynamodb::DynamoDbClient::new(rusoto_core::Region::default());
     let lock_options = dynamodb_lock::DynamoDbOptions {
         lease_duration: 60,
+        partition_key_value: "oxbow".into(),
         ..Default::default()
     };
     let lock_client = dynamodb_lock::DynamoDbLockClient::new(dynamodb_client, lock_options);
@@ -64,10 +65,14 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             .expect("Failed to get the files for a table, impossible!");
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
+
+        debug!("Attempting to retrieve a lock");
         let lock = lock_client
             .try_acquire_lock(Some(table))
-            .await?
+            .await
+            .expect("Failed to acquire a lockj")
             .expect("Failed to acquire a lock, failing function");
+        debug!("Lock acquired");
 
         if lock.acquired_expired_lock {
             error!("Somehow oxbow acquired an already expired lock, failing");

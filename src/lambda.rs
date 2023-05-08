@@ -156,6 +156,10 @@ fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRecord
             }
             replacement
         })
+        .filter(|record| match &record.s3.object.url_decoded_key {
+            None => true,
+            Some(key) => !key.contains("_delta_log"),
+        })
         .collect()
 }
 

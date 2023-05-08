@@ -102,8 +102,8 @@ fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<ObjectMeta
 
     for record in records.iter() {
         if let Some(bucket) = &record.s3.bucket.name {
-            let om = into_object_meta(&record.s3.object);
-            let log_path = infer_log_path_from(om.location.as_ref());
+            let log_path = infer_log_path_from(record.s3.object.key.as_ref().unwrap());
+            let om = into_object_meta(&record.s3.object, Some(&log_path));
 
             let key = format!("s3://{}/{}", bucket, log_path);
 
@@ -161,11 +161,16 @@ fn infer_log_path_from(path: &str) -> String {
  * This is a _lossy_ conversion since the two structs do not share the same set of information,
  * therefore this conversion is really only taking the path of the object and the size
  */
-fn into_object_meta(s3object: &S3Object) -> ObjectMeta {
+fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMeta {
+    let location = s3object.key.clone().unwrap_or("".to_string());
+    let location = match prune_prefix {
+        Some(prune) => Path::from(location.strip_prefix(prune).unwrap_or(&location)),
+        None => Path::from(location),
+    };
     ObjectMeta {
         size: s3object.size.unwrap_or(0) as usize,
         last_modified: Utc::now(),
-        location: Path::from(s3object.key.clone().unwrap_or("".to_string())),
+        location,
     }
 }
 
@@ -215,7 +220,29 @@ mod tests {
             size: 1024,
         };
 
-        let result = into_object_meta(&s3object);
+        let result = into_object_meta(&s3object, None);
+        assert_eq!(expected.location, result.location);
+        assert_eq!(expected.size, result.size);
+    }
+
+    #[test]
+    fn into_object_meta_with_prefix() {
+        let s3object = S3Object {
+            key: Some("some/path/to/a/prefix/alpha.parquet".into()),
+            size: Some(1024),
+            url_decoded_key: None,
+            version_id: None,
+            e_tag: None,
+            sequencer: None,
+        };
+
+        let expected = deltalake::ObjectMeta {
+            location: deltalake::Path::from("alpha.parquet"),
+            last_modified: Utc::now(),
+            size: 1024,
+        };
+
+        let result = into_object_meta(&s3object, Some("some/path/to/a/prefix"));
         assert_eq!(expected.location, result.location);
         assert_eq!(expected.size, result.size);
     }

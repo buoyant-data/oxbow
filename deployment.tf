@@ -107,9 +107,12 @@ resource "aws_iam_policy" "lambda_permissions" {
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name                = "iam_for_oxbow_lambda"
-  assume_role_policy  = data.aws_iam_policy_document.assume_role.json
-  managed_policy_arns = [aws_iam_policy.lambda_permissions.arn]
+  name               = "iam_for_oxbow_lambda"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+  managed_policy_arns = [
+    aws_iam_policy.lambda_permissions.arn,
+    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+  ]
 }
 
 # The DynamoDb table is used for providing safe concurrent writes to delta

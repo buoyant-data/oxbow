@@ -76,7 +76,7 @@ lambda` command line tool, e.g.:
 
 [source,bash]
 ----
-cargo lambda build --release --output-format zip
+cargo lambda build --features lambda --release --output-format zip
 ----
 
 This will produce the file: `target/lambda/oxbow/bootstrap.zip` which can be

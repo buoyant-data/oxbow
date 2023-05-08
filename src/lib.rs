@@ -140,7 +140,7 @@ pub async fn append_to_table(files: &[ObjectMeta], table: &mut DeltaTable) -> De
         &actions,
         DeltaOperation::Write {
             mode: SaveMode::Append,
-            partition_by: Some(partition_columns_from(&files)),
+            partition_by: Some(partition_columns_from(files)),
             predicate: None,
         },
         table.get_state(),

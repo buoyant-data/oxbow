@@ -24,11 +24,12 @@ rusoto_credential = { version = "*", optional = true }
 rusoto_s3 = { version = "*", default-features = false, features = ["rustls"], optional = true }
 serde = { version = "*", features = ["rc"], optional = true }
 serde_json = { version = "1", optional = true }
+urlencoding = { version = "2", optional = true }
 
 [features]
 default = ["cli"]
 cli = ["gumdrop"]
-lambda = ["aws_lambda_events", "lambda_runtime", "rusoto_core", "rusoto_credential", "rusoto_s3", "serde", "serde_json" ]
+lambda = ["aws_lambda_events", "lambda_runtime", "rusoto_core", "rusoto_credential", "rusoto_s3", "serde", "serde_json", "urlencoding"]
 
 [dev-dependencies]
 fs_extra = "1"

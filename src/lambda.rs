@@ -147,7 +147,12 @@ fn infer_log_path_from(path: &str) -> String {
  * therefore this conversion is really only taking the path of the object and the size
  */
 fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMeta {
-    let location = s3object.key.clone().unwrap_or("".to_string());
+    use urlencoding::decode;
+    let location = match decode(&s3object.key.clone().unwrap_or("".to_string())) {
+        Ok(l) => l.into_owned(),
+        Err(_) => String::new(),
+    };
+
     let location = match prune_prefix {
         Some(prune) => Path::from(location.strip_prefix(prune).unwrap_or(&location)),
         None => Path::from(location),
@@ -228,6 +233,38 @@ mod tests {
         };
 
         let result = into_object_meta(&s3object, Some("some/path/to/a/prefix"));
+        assert_eq!(expected.location, result.location);
+        assert_eq!(expected.size, result.size);
+    }
+
+    /*
+     * The keys coming off of the S3Object will be url encodeed, and for hive style partitioning
+     * that needs to be undone.
+     *
+     * In theory S3Object does have `url_decoded_key` but in production testing this was always
+     * None.
+     */
+    #[test]
+    fn into_object_meta_urlencoded() {
+        let key = "databases/deltatbl-partitioned/c2%3Dfoo0/part-00000-2bcc9ff6-0551-4401-bd22-d361a60627e3.c000.snappy.parquet";
+        let s3object = S3Object {
+            key: Some(key.into()),
+            size: Some(1024),
+            url_decoded_key: None,
+            version_id: None,
+            e_tag: None,
+            sequencer: None,
+        };
+
+        let expected = deltalake::ObjectMeta {
+            location: deltalake::Path::from(
+                "c2=foo0/part-00000-2bcc9ff6-0551-4401-bd22-d361a60627e3.c000.snappy.parquet",
+            ),
+            last_modified: Utc::now(),
+            size: 1024,
+        };
+
+        let result = into_object_meta(&s3object, Some("databases/deltatbl-partitioned"));
         assert_eq!(expected.location, result.location);
         assert_eq!(expected.size, result.size);
     }

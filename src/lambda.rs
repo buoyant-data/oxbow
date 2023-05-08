@@ -26,6 +26,11 @@ pub async fn main() -> Result<(), anyhow::Error> {
 
 async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
+    let dynamodb_client = rusoto_dynamodb::DynamoDbClient::new(rusoto_core::Region::default());
+    let mut lock_options = dynamodb_lock::DynamoDbOptions::default();
+    // 60s to hold the lease
+    lock_options.lease_duration = 60;
+    let lock_client = dynamodb_lock::DynamoDbLockClient::new(dynamodb_client, lock_options);
 
     /*
      * The response variable will be spat out at the end of the Lambda, since this Lambda is
@@ -45,6 +50,12 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
             .expect("Failed to get the files for a table, impossible!");
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
+        let lock = lock_client.try_acquire_lock(Some(&table)).await?.expect("Failed to acquire a lock, failing function");
+
+        if lock.acquired_expired_lock {
+            error!("Somehow oxbow acquired an already expired lock, failing");
+            panic!("Failing in hopes of acquiring a fresh lock");
+        }
 
         if let Ok(mut table) = deltalake::open_table(&table).await {
             info!("Opened table to append: {:?}", table);
@@ -98,6 +109,12 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
             } else {
                 messages.push(format!("Successfully created table at {}", location));
             }
+        }
+
+        if let Err(e) = lock_client.release_lock(&lock).await {
+            let message = format!("Failing to properly release the lock {:?}: {:?}", lock, e);
+            error!("{}", message);
+            messages.push(message);
         }
 
         response.insert(location, messages);

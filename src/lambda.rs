@@ -48,14 +48,42 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
 
         if let Ok(mut table) = deltalake::open_table(&table).await {
             info!("Opened table to append: {:?}", table);
-            let result = oxbow::append_to_table(files, &mut table).await;
 
-            if result.is_err() {
-                let message = format!("Failed to append to the table {}: {:?}", location, result);
-                error!("{}", &message);
-                messages.push(message);
-            } else {
-                messages.push(format!("Successfully appended to table at {}", location));
+            match oxbow::append_to_table(files, &mut table).await {
+                Ok(version) => {
+                    messages.push(format!(
+                        "Successfully appended version {} to table at {}",
+                        version, location
+                    ));
+
+                    if version & 10 == 0 {
+                        info!("Creating a checkpoint for {}", location);
+                        match deltalake::checkpoints::create_checkpoint_from_table_uri_and_cleanup(
+                            &table.table_uri(),
+                            version,
+                            None,
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                info!("Successfully created checkpoint");
+                            }
+                            Err(e) => {
+                                let message = format!(
+                                    "Failed to create checkpoint for {}! {:?}",
+                                    location, e
+                                );
+                                error!("{}", &message);
+                                messages.push(message);
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    let message = format!("Failed to append to the table {}: {:?}", location, err);
+                    error!("{}", &message);
+                    messages.push(message);
+                }
             }
         } else {
             // create the table with our objects

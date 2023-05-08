@@ -7,7 +7,7 @@ use deltalake::parquet::arrow::async_reader::{
 };
 use deltalake::partitions::DeltaTablePartition;
 use deltalake::storage::DeltaObjectStore;
-use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
+use deltalake::{DeltaDataTypeVersion, DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
 use futures::StreamExt;
 use log::*;
 use url::Url;
@@ -132,7 +132,10 @@ pub async fn create_table_with(
 /*
  * Append the given files to an already existing and initialized Delta Table
  */
-pub async fn append_to_table(files: &[ObjectMeta], table: &mut DeltaTable) -> DeltaResult<i64> {
+pub async fn append_to_table(
+    files: &[ObjectMeta],
+    table: &mut DeltaTable,
+) -> DeltaResult<DeltaDataTypeVersion> {
     let actions = add_actions_for(files);
 
     deltalake::operations::transaction::commit(

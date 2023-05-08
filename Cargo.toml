@@ -3,7 +3,6 @@ name = "oxbow"
 version = "0.1.0"
 edition = "2021"
 keywords = ["deltalake", "parquet", "lambda", "delta"]
-readme = "README.md"
 homepage = "https://github.com/buoyant-data/oxbow"
 repository = "https://github.com/buoyant-data/oxbow"
 description = "Tooling for converting directories of Apache Parquet files into Delta Lake tables"

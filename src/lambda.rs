@@ -89,7 +89,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                         version, location
                     ));
 
-                    if version & 10 == 0 {
+                    if version % 10 == 0 {
                         info!("Creating a checkpoint for {}", location);
                         match deltalake::checkpoints::create_checkpoint_from_table_uri_and_cleanup(
                             &table.table_uri(),

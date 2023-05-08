@@ -2,7 +2,12 @@
 name = "oxbow"
 version = "0.1.0"
 edition = "2021"
+keywords = ["deltalake", "parquet", "lambda", "delta"]
+readme = "README.md"
+homepage = "https://github.com/buoyant-data/oxbow"
 repository = "https://github.com/buoyant-data/oxbow"
+description = "Tooling for converting directories of Apache Parquet files into Delta Lake tables"
+license-file = "LICENSE.txt"
 
 [[bin]]
 name = "oxbow-cli"
@@ -64,4 +69,4 @@ ci = ["github"]
 # The installers to generate for each app
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]

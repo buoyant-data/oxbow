@@ -33,10 +33,13 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
      * purposes outside of manual testing
      */
     let mut response: HashMap<Url, Vec<String>> = HashMap::new();
-    let by_table = objects_by_table(&event.payload.records);
+
+    let records = records_with_url_decoded_keys(&event.payload.records);
+    let by_table = objects_by_table(&records);
 
     for table in by_table.keys() {
-        let location = Url::parse(&table).expect("Failed to turn a table into a URL");
+        let location = Url::parse(table).expect("Failed to turn a table into a URL");
+        debug!("Handling table: {:?}", location);
         let files = by_table
             .get(table)
             .expect("Failed to get the files for a table, impossible!");
@@ -44,7 +47,8 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
         let mut messages = vec![];
 
         if let Ok(mut table) = deltalake::open_table(&table).await {
-            let result = oxbow::append_to_table(&files, &mut table).await;
+            info!("Opened table to append: {:?}", table);
+            let result = oxbow::append_to_table(files, &mut table).await;
 
             if result.is_err() {
                 let message = format!("Failed to append to the table {}: {:?}", location, result);
@@ -57,7 +61,7 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
             // create the table with our objects
             info!("Creating new Delta table at: {}", location);
             let store = oxbow::object_store_for(&location);
-            let table = oxbow::create_table_with(&files, store.clone()).await;
+            let table = oxbow::create_table_with(files, store.clone()).await;
 
             if table.is_err() {
                 let message = format!("Failed to create new Delta table: {:?}", table);
@@ -87,7 +91,7 @@ fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<ObjectMeta
 
     for record in records.iter() {
         if let Some(bucket) = &record.s3.bucket.name {
-            let log_path = infer_log_path_from(record.s3.object.key.as_ref().unwrap());
+            let log_path = infer_log_path_from(record.s3.object.url_decoded_key.as_ref().unwrap());
             let om = into_object_meta(&record.s3.object, Some(&log_path));
 
             let key = format!("s3://{}/{}", bucket, log_path);
@@ -102,6 +106,29 @@ fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<ObjectMeta
     }
 
     result
+}
+
+/*
+ * Return wholly new [`S3EventRecord`] objects with their the [`S3Object`] `url_decoded_key`
+ * properly filled in
+ *
+ * For whatever reason `aws_lambda_events` does not properly handle this
+ */
+fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRecord> {
+    use urlencoding::decode;
+
+    records
+        .iter()
+        .map(|record| {
+            let mut replacement = record.clone();
+            if let Some(key) = &replacement.s3.object.key {
+                if let Ok(decoded_key) = decode(key) {
+                    replacement.s3.object.url_decoded_key = Some(decoded_key.into_owned());
+                }
+            }
+            replacement
+        })
+        .collect()
 }
 
 /*
@@ -121,20 +148,17 @@ fn infer_log_path_from(path: &str) -> String {
         .expect("Failed to get parent() of path")
         .components()
     {
-        match component {
-            Component::Normal(os_str) => {
-                if let Some(segment) = os_str.to_str() {
-                    /*
-                     * If a segment has what looks like a hive-style partition, bail and call that the root of
-                     * the delta table
-                     */
-                    if segment.find('=') >= Some(0) {
-                        break;
-                    }
-                    root.push(segment);
+        if let Component::Normal(os_str) = component {
+            if let Some(segment) = os_str.to_str() {
+                /*
+                 * If a segment has what looks like a hive-style partition, bail and call that the root of
+                 * the delta table
+                 */
+                if segment.find('=') >= Some(0) {
+                    break;
                 }
+                root.push(segment);
             }
-            _ => {}
         }
     }
     root.join("/")
@@ -147,11 +171,7 @@ fn infer_log_path_from(path: &str) -> String {
  * therefore this conversion is really only taking the path of the object and the size
  */
 fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMeta {
-    use urlencoding::decode;
-    let location = match decode(&s3object.key.clone().unwrap_or("".to_string())) {
-        Ok(l) => l.into_owned(),
-        Err(_) => String::new(),
-    };
+    let location = s3object.url_decoded_key.clone().unwrap_or("".to_string());
 
     let location = match prune_prefix {
         Some(prune) => Path::from(location.strip_prefix(prune).unwrap_or(&location)),
@@ -198,7 +218,7 @@ mod tests {
         let s3object = S3Object {
             key: Some("some/path/to/a/prefix/alpha.parquet".into()),
             size: Some(1024),
-            url_decoded_key: None,
+            url_decoded_key: Some("some/path/to/a/prefix/alpha.parquet".into()),
             version_id: None,
             e_tag: None,
             sequencer: None,
@@ -220,7 +240,7 @@ mod tests {
         let s3object = S3Object {
             key: Some("some/path/to/a/prefix/alpha.parquet".into()),
             size: Some(1024),
-            url_decoded_key: None,
+            url_decoded_key: Some("some/path/to/a/prefix/alpha.parquet".into()),
             version_id: None,
             e_tag: None,
             sequencer: None,
@@ -250,7 +270,7 @@ mod tests {
         let s3object = S3Object {
             key: Some(key.into()),
             size: Some(1024),
-            url_decoded_key: None,
+            url_decoded_key: Some("databases/deltatbl-partitioned/c2=foo0/part-00000-2bcc9ff6-0551-4401-bd22-d361a60627e3.c000.snappy.parquet".into()),
             version_id: None,
             e_tag: None,
             sequencer: None,
@@ -276,7 +296,7 @@ mod tests {
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
         assert_eq!(3, event.records.len());
 
-        let groupings = objects_by_table(&event.records);
+        let groupings = objects_by_table(&records_with_url_decoded_keys(&event.records));
 
         assert_eq!(2, groupings.keys().len());
 
@@ -297,5 +317,16 @@ mod tests {
             table_two.len(),
             "Shoulid only be two objects in table two"
         );
+    }
+
+    #[test]
+    fn test_records_with_url_decoded_keys() {
+        let buf = std::fs::read_to_string("tests/data/s3-event-multiple-urlencoded.json")
+            .expect("Failed to read file");
+        let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
+        assert_eq!(3, event.records.len());
+
+        let records = records_with_url_decoded_keys(&event.records);
+        assert_eq!(event.records.len(), records.len());
     }
 }

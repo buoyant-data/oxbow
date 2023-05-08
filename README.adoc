@@ -45,22 +45,54 @@ into a Delta table!
 
 === Lambda
 
+The `deployment.tf` file contains the necessary Terraform to provision the
+function, a DynamoDB table for locking, S3 bucket, and IAM permissions.
+
+After configuring the necessary authentication for Terraform, the following
+steps can be used to provision:
+
+[source,bash]
+----
+cargo lambda build --release --output-format zip
+terraform init
+terraform plan
+terraform apply
+----
+
 [NOTE]
 ====
-The Lambda support is not yet implemented, come back soon!
+Terraform configures the Lambda to run with the smallest amount of memory
+allowed. For bucket locations with massive `.parquet` files, this may need to
+be tuned.
 ====
 
 
-== Design
+== Development
 
-=== Command Line
+Building and testing can be done with cargo: `cargo test build`.
+
+In order to deploy this in AWS Lambda, it must first be built with the `cargo
+lambda` command line tool, e.g.:
+
+[source,bash]
+----
+cargo lambda build --release --output-format zip
+----
+
+This will produce the file: `target/lambda/oxbow/bootstrap.zip` which can be
+uploaded direectly in the web console, or referenced in the Terraform (see
+`deployment.tf`).
+
+=== Design
+
+==== Command Line
 
 When running `oxbow` via command line it is a _one time operation_. It will
 take an existing directory or location full of `.parquet` files and create a
 Delta table out of it.
 
 
-=== Lambda
+==== Lambda
 
 When running `oxbow` inside of a AWS Lambda function it should be configured
 with an S3 Event Trigger and create new commits to a Delta Lake table any time

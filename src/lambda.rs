@@ -5,6 +5,7 @@
  */
 
 use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
+use aws_lambda_events::sqs::SqsEvent;
 use chrono::prelude::*;
 use deltalake::{ObjectMeta, Path};
 use lambda_runtime::{service_fn, Error, LambdaEvent};
@@ -24,12 +25,13 @@ pub async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
+async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
     let dynamodb_client = rusoto_dynamodb::DynamoDbClient::new(rusoto_core::Region::default());
-    let mut lock_options = dynamodb_lock::DynamoDbOptions::default();
-    // 60s to hold the lease
-    lock_options.lease_duration = 60;
+    let lock_options = dynamodb_lock::DynamoDbOptions {
+        lease_duration: 60,
+        ..Default::default()
+    };
     let lock_client = dynamodb_lock::DynamoDbLockClient::new(dynamodb_client, lock_options);
 
     /*
@@ -39,7 +41,19 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
      */
     let mut response: HashMap<Url, Vec<String>> = HashMap::new();
 
-    let records = records_with_url_decoded_keys(&event.payload.records);
+    let mut records = vec![];
+    for record in event.payload.records.iter() {
+        /* each record is an SqsMessage */
+        if let Some(body) = &record.body {
+            if let Ok(s3event) = serde_json::from_str::<S3Event>(body) {
+                for s3record in s3event.records {
+                    records.push(s3record.clone());
+                }
+            }
+        }
+    }
+
+    let records = records_with_url_decoded_keys(&records);
     let by_table = objects_by_table(&records);
 
     for table in by_table.keys() {
@@ -50,7 +64,10 @@ async fn func<'a>(event: LambdaEvent<S3Event>) -> Result<Value, Error> {
             .expect("Failed to get the files for a table, impossible!");
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
-        let lock = lock_client.try_acquire_lock(Some(&table)).await?.expect("Failed to acquire a lock, failing function");
+        let lock = lock_client
+            .try_acquire_lock(Some(table))
+            .await?
+            .expect("Failed to acquire a lock, failing function");
 
         if lock.acquired_expired_lock {
             error!("Somehow oxbow acquired an already expired lock, failing");

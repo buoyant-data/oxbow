@@ -16,7 +16,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Prepare cargo-lambda
+      run: pip3 install ziglang && cargo install cargo-lambda
     - name: Build
-      run: cargo install cargo-lambda && cargo lambda build
+      run: cargo lambda build
     - name: Run tests
       run: cargo test --verbose

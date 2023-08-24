@@ -10,15 +10,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Prepare cargo-lambda
-      run: pip3 install ziglang && cargo install cargo-lambda
-    - name: Build
-      run: cargo lambda build
-    - name: Run tests
-      run: cargo test --verbose
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+            - name: Install Zig toolchain
+              uses: korandoru/setup-zig@v1
+              with:
+                zig-version: 0.10.0
+            - name: Install Cargo Lambda
+              uses: jaxxstorm/action-install-gh-release@v1.9.0
+              with:
+                repo: cargo-lambda/cargo-lambda
+                platform: linux # Other valid options: 'windows' or 'darwin'
+                arch: x86_64 # Other valid options for linux: 'aarch64'
+            # Add your build steps below
+            - name: Build
+              run: cargo lambda build
+            - name: Run tests
+              run: cargo test --verbose

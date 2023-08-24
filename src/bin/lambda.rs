@@ -254,6 +254,7 @@ fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMe
     ObjectMeta {
         size: s3object.size.unwrap_or(0) as usize,
         last_modified: Utc::now(),
+        e_tag: None,
         location,
     }
 }
@@ -302,6 +303,7 @@ mod tests {
             location: deltalake::Path::from("some/path/to/a/prefix/alpha.parquet"),
             last_modified: Utc::now(),
             size: 1024,
+            e_tag: None,
         };
 
         let result = into_object_meta(&s3object, None);
@@ -323,6 +325,7 @@ mod tests {
         let expected = deltalake::ObjectMeta {
             location: deltalake::Path::from("alpha.parquet"),
             last_modified: Utc::now(),
+            e_tag: None,
             size: 1024,
         };
 
@@ -356,6 +359,7 @@ mod tests {
             ),
             last_modified: Utc::now(),
             size: 1024,
+            e_tag: None,
         };
 
         let result = into_object_meta(&s3object, Some("databases/deltatbl-partitioned"));

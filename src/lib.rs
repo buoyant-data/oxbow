@@ -7,7 +7,7 @@ use deltalake::parquet::arrow::async_reader::{
 };
 use deltalake::partitions::DeltaTablePartition;
 use deltalake::storage::DeltaObjectStore;
-use deltalake::{DeltaDataTypeVersion, DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
+use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
 use futures::StreamExt;
 use log::*;
 use url::Url;
@@ -132,10 +132,7 @@ pub async fn create_table_with(
 /*
  * Append the given files to an already existing and initialized Delta Table
  */
-pub async fn append_to_table(
-    files: &[ObjectMeta],
-    table: &mut DeltaTable,
-) -> DeltaResult<DeltaDataTypeVersion> {
+pub async fn append_to_table(files: &[ObjectMeta], table: &mut DeltaTable) -> DeltaResult<i64> {
     let actions = add_actions_for(files);
 
     deltalake::operations::transaction::commit(
@@ -280,11 +277,13 @@ mod tests {
                 location: Path::from("foo/large"),
                 last_modified: Utc::now(),
                 size: 4096,
+                e_tag: None,
             },
             ObjectMeta {
                 location: Path::from("foo/small"),
                 last_modified: Utc::now(),
                 size: 1024,
+                e_tag: None,
             },
         ];
 
@@ -311,6 +310,7 @@ mod tests {
             ),
             last_modified: Utc::now(),
             size: 689,
+            e_tag: None,
         }];
         let result = add_actions_for(&files);
         assert_eq!(1, result.len());
@@ -330,11 +330,13 @@ mod tests {
                 location: Path::from("foo/large"),
                 last_modified: Utc::now(),
                 size: 4096,
+                e_tag: None,
             },
             ObjectMeta {
                 location: Path::from("foo/small"),
                 last_modified: Utc::now(),
                 size: 1024,
+                e_tag: None,
             },
         ];
         assert_eq!(expected, partition_columns_from(&files));
@@ -349,10 +351,12 @@ mod tests {
                 location: Path::from("c2=foo1/large"),
                 last_modified: Utc::now(),
                 size: 4096,
+                e_tag: None,
             },
             ObjectMeta {
                 location: Path::from("c2=foo2/small"),
                 last_modified: Utc::now(),
+                e_tag: None,
                 size: 1024,
             },
         ];
@@ -377,11 +381,13 @@ mod tests {
             ObjectMeta {
                 location: Path::from("c2=foo1/c3=bar1/large"),
                 last_modified: Utc::now(),
+                e_tag: None,
                 size: 4096,
             },
             ObjectMeta {
                 location: Path::from("c2=foo2/c3=bar2/small"),
                 last_modified: Utc::now(),
+                e_tag: None,
                 size: 1024,
             },
         ];

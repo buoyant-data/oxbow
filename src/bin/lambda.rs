@@ -118,7 +118,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                 Err(err) => {
                     let message = format!("Failed to append to the table {}: {:?}", location, err);
                     error!("{}", &message);
-                    messages.push(message);
+                    return Err(Box::new(err));
                 }
             }
         } else {
@@ -130,7 +130,8 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             if table.is_err() {
                 let message = format!("Failed to create new Delta table: {:?}", table);
                 error!("{}", &message);
-                messages.push(message);
+                // Propogate that error up so the function fails
+                let _ = table?;
             } else {
                 messages.push(format!("Successfully created table at {}", location));
             }

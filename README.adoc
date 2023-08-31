@@ -17,6 +17,8 @@ Lambda or as a command line application.
 The project is named after link:https://en.wikipedia.org/wiki/Oxbow_lake[Oxbow
 lakes] to keep with the lake theme.
 
+toc::[]
+
 == Using
 
 === Command Line

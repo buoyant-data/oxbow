@@ -31,12 +31,6 @@ async fn main() -> Result<(), anyhow::Error> {
 async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
     let dynamodb_client = rusoto_dynamodb::DynamoDbClient::new(rusoto_core::Region::default());
-    let lock_options = dynamodb_lock::DynamoDbOptions {
-        lease_duration: 60,
-        partition_key_value: "oxbow".into(),
-        ..Default::default()
-    };
-    let lock_client = dynamodb_lock::DynamoDbLockClient::new(dynamodb_client, lock_options);
 
     /*
      * The response variable will be spat out at the end of the Lambda, since this Lambda is
@@ -61,6 +55,13 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     let by_table = objects_by_table(&records);
 
     for table in by_table.keys() {
+        let lock_options = dynamodb_lock::DynamoDbOptions {
+            lease_duration: 60,
+            partition_key_value: table.into(),
+            ..Default::default()
+        };
+        let lock_client =
+            dynamodb_lock::DynamoDbLockClient::new(dynamodb_client.clone(), lock_options);
         let location = Url::parse(table).expect("Failed to turn a table into a URL");
         debug!("Handling table: {:?}", location);
         let files = by_table
@@ -69,11 +70,11 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
 
-        debug!("Attempting to retrieve a lock");
+        debug!("Attempting to retrieve a lock for {table:?}");
         let lock = lock_client
             .try_acquire_lock(Some(table))
             .await
-            .expect("Failed to acquire a lockj")
+            .expect("Failed to acquire a lock")
             .expect("Failed to acquire a lock, failing function");
         debug!("Lock acquired");
 

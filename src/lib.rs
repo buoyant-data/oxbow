@@ -7,7 +7,7 @@ use deltalake::parquet::arrow::async_reader::{
 };
 use deltalake::partitions::DeltaTablePartition;
 use deltalake::storage::DeltaObjectStore;
-use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore};
+use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore, SchemaDataType, SchemaField};
 use futures::StreamExt;
 use log::*;
 use url::Url;
@@ -99,6 +99,7 @@ pub async fn create_table_with(
     use deltalake::operations::create::CreateBuilder;
     use deltalake::schema::Schema;
 
+    let partitions = partition_columns_from(files);
     let smallest = find_smallest_file(files)
         .expect("Failed to find the smallest parquet file, which is fatal");
     debug!(
@@ -116,14 +117,25 @@ pub async fn create_table_with(
     let schema: deltalake::schema::Schema = Schema::try_from(arrow_schema)
         .expect("Failed to convert the schema for creating the table");
 
+    let mut columns = schema.get_fields().clone();
+    for partition in &partitions {
+        let field = SchemaField::new(
+            partition.into(),
+            SchemaDataType::primitive("string".into()),
+            true,
+            HashMap::new(),
+        );
+        columns.push(field);
+    }
+
     /*
      * Create and persist the table
      */
     let actions = add_actions_for(files);
     CreateBuilder::new()
         .with_object_store(store.clone())
-        .with_columns(schema.get_fields().clone())
-        .with_partition_columns(partition_columns_from(files))
+        .with_columns(columns)
+        .with_partition_columns(partitions)
         .with_actions(actions)
         .with_save_mode(SaveMode::Ignore)
         .await
@@ -392,5 +404,47 @@ mod tests {
             },
         ];
         assert_unordered_eq(&expected, &partition_columns_from(&files));
+    }
+
+    /*
+     * See <https://github.com/buoyant-data/oxbow/issues/2>
+     */
+    #[tokio::test]
+    async fn create_schema_for_partitioned_path() {
+        use fs_extra::{copy_items, dir::CopyOptions, remove_items};
+
+        let path = std::fs::canonicalize("./tests/data/hive/deltatbl-partitioned")
+            .expect("Failed to canonicalize");
+        let dir = tempfile::tempdir().expect("Failed to create a temporary directory");
+
+        let options = CopyOptions::new();
+        copy_items(&vec![path.as_path()], dir.path(), &options).expect("Failed to copy items over");
+        // Remove the tempdir's copied _delta_log/ since the test must recreate it
+        remove_items(&vec![dir.path().join("_delta_log")])
+            .expect("Failed to remove temp _delta_log/");
+
+        let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
+        let store = object_store_for(&url);
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 11);
+
+        let parts = partition_columns_from(&files);
+        assert_eq!(
+            parts.len(),
+            1,
+            "Expected to find one partition in the files"
+        );
+
+        let table = create_table_with(&files, store.clone())
+            .await
+            .expect("Failed to create table");
+        let schema = table.get_schema().expect("Failed to get schema");
+        assert!(
+            schema.get_field_with_name("c2").is_ok(),
+            "The schema does not include the expected partition key `c2`"
+        );
     }
 }

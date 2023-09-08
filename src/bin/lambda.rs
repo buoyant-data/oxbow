@@ -131,8 +131,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         } else {
             // create the table with our objects
             info!("Creating new Delta table at: {}", location);
-            let store = oxbow::object_store_for(&location);
-            let table = oxbow::create_table_with(files, store.clone()).await;
+            let table = oxbow::convert(&table).await;
 
             if table.is_err() {
                 let message = format!("Failed to create new Delta table: {:?}", table);

@@ -9,16 +9,22 @@ use aws_lambda_events::sqs::SqsEvent;
 use chrono::prelude::*;
 use deltalake::{ObjectMeta, Path};
 use lambda_runtime::{service_fn, Error, LambdaEvent};
-use log::*;
 use serde_json::json;
 use serde_json::Value;
+use tracing::log::*;
 use url::Url;
 
 use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    pretty_env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        // disable printing the name of the module in every log line.
+        .with_target(false)
+        // disabling time is handy because CloudWatch will add the ingestion time.
+        .without_time()
+        .init();
     info!("Starting oxbow");
     info!("Starting the Lambda runtime");
     let func = service_fn(func);

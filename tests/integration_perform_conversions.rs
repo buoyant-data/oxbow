@@ -2,8 +2,8 @@
  * This integration test file will take a number of directories from tests/data and perform the
  * conversions using the CLI on them to ensure consistency
  */
-use log::*;
 use tempfile::*;
+use tracing::log::*;
 
 use std::path::Path;
 

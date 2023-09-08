@@ -9,7 +9,7 @@ use deltalake::partitions::DeltaTablePartition;
 use deltalake::storage::DeltaObjectStore;
 use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore, SchemaDataType, SchemaField};
 use futures::StreamExt;
-use log::*;
+use tracing::log::*;
 use url::Url;
 
 use std::collections::{HashMap, HashSet};
@@ -208,6 +208,7 @@ pub fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
             size: om.size as i64,
             modification_time: om.last_modified.timestamp_millis(),
             data_change: true,
+            deletion_vector: None,
             stats: None,
             stats_parsed: None,
             tags: None,

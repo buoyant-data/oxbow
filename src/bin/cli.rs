@@ -3,7 +3,7 @@
  */
 
 use gumdrop::Options;
-use log::*;
+use tracing::log::*;
 
 /*
  * Flags is a structure for managing command linke parameters
@@ -33,7 +33,9 @@ impl Default for Flags {
  */
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    pretty_env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     info!("Starting oxbow");
     let flags = Flags::parse_args_default_or_exit();
     debug!("Options as read: {:?}", flags);

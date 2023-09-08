@@ -19,10 +19,10 @@ path = "src/bin/lambda.rs"
 [dependencies]
 anyhow = "*"
 chrono = "*"
-deltalake = { version = "0.14.0", features = ["s3", "json"]}
+deltalake = { version = "0.15", features = ["s3", "json"]}
 futures = "*"
-log = "0.4"
-pretty_env_logger = "0.4"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }
 tokio = { version = "1", features = ["macros"] }
 url = { version = "2.3", features = ["serde"] }
 

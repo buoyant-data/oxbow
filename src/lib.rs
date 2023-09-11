@@ -430,7 +430,7 @@ mod tests {
         let files = discover_parquet_files(store.clone())
             .await
             .expect("Failed to discover parquet files");
-        assert_eq!(files.len(), 11);
+        assert_eq!(files.len(), 4);
 
         let parts = partition_columns_from(&files);
         assert_eq!(

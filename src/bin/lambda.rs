@@ -49,6 +49,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     for record in event.payload.records.iter() {
         /* each record is an SqsMessage */
         if let Some(body) = &record.body {
+            let _: S3Event = serde_json::from_str(&body).expect("Failed to deserialize!");
             if let Ok(s3event) = serde_json::from_str::<S3Event>(body) {
                 for s3record in s3event.records {
                     records.push(s3record.clone());
@@ -57,8 +58,10 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         }
     }
 
+    debug!("processing records: {records:?}");
     let records = records_with_url_decoded_keys(&records);
     let by_table = objects_by_table(&records);
+    debug!("Grouped by table: {by_table:?}");
 
     for table in by_table.keys() {
         let lock_options = dynamodb_lock::DynamoDbOptions {

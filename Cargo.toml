@@ -30,7 +30,7 @@ url = { version = "2.3", features = ["serde"] }
 gumdrop = "=0.8"
 
 # lambda requirements
-aws_lambda_events = { version = "0.7" }
+aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
 dynamodb_lock = { version = "*" }
 lambda_runtime = { version = "0.8" }
 rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}

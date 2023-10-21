@@ -63,37 +63,25 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     let by_table = objects_by_table(&records);
     debug!("Grouped by table: {by_table:?}");
 
-    for table in by_table.keys() {
+    for table_name in by_table.keys() {
         let lock_options = dynamodb_lock::DynamoDbOptions {
             lease_duration: 60,
-            partition_key_value: table.into(),
+            partition_key_value: table_name.into(),
             ..Default::default()
         };
         let lock_client =
             dynamodb_lock::DynamoDbLockClient::new(dynamodb_client.clone(), lock_options);
-        let location = Url::parse(table).expect("Failed to turn a table into a URL");
+        let location = Url::parse(table_name).expect("Failed to turn a table into a URL");
         debug!("Handling table: {:?}", location);
         let files = by_table
-            .get(table)
+            .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
 
-        debug!("Attempting to retrieve a lock for {table:?}");
-        let lock = lock_client
-            .try_acquire_lock(Some(table))
-            .await
-            .expect("Failed to acquire a lock")
-            .expect("Failed to acquire a lock, failing function");
-        debug!("Lock acquired");
-
-        if lock.acquired_expired_lock {
-            error!("Somehow oxbow acquired an already expired lock, failing");
-            panic!("Failing in hopes of acquiring a fresh lock");
-        }
-
-        if let Ok(mut table) = deltalake::open_table(&table).await {
+        if let Ok(mut table) = deltalake::open_table(&table_name).await {
             info!("Opened table to append: {:?}", table);
+            let lock = acquire_lock(&table_name, &lock_client).await;
 
             match oxbow::append_to_table(files, &mut table).await {
                 Ok(version) => {
@@ -124,17 +112,21 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                             }
                         }
                     }
+                    let _ = release_lock(lock, &lock_client).await;
                 }
                 Err(err) => {
                     let message = format!("Failed to append to the table {}: {:?}", location, err);
                     error!("{}", &message);
+                    let _ = release_lock(lock, &lock_client).await;
                     return Err(Box::new(err));
                 }
             }
         } else {
             // create the table with our objects
             info!("Creating new Delta table at: {}", location);
-            let table = oxbow::convert(&table).await;
+            let lock = acquire_lock(&table_name, &lock_client).await;
+            let table = oxbow::convert(&table_name).await;
+            let _ = release_lock(lock, &lock_client).await;
 
             if table.is_err() {
                 let message = format!("Failed to create new Delta table: {:?}", table);
@@ -146,16 +138,50 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             }
         }
 
-        if let Err(e) = lock_client.release_lock(&lock).await {
-            let message = format!("Failing to properly release the lock {:?}: {:?}", lock, e);
-            error!("{}", message);
-            messages.push(message);
-        }
-
         response.insert(location, messages);
     }
 
     Ok(json!(response))
+}
+
+/**
+ * Simple helper function to acquire a lock with DynamoDb
+ *
+ * This function will panic in the bizarre condition where the lock has expired upon acquisition
+ */
+async fn acquire_lock(
+    key: &str,
+    lock_client: &dynamodb_lock::DynamoDbLockClient,
+) -> dynamodb_lock::LockItem {
+    debug!("Attempting to retrieve a lock for {key:?}");
+    let lock = lock_client
+        .try_acquire_lock(Some(key))
+        .await
+        .expect("Failed to acquire a lock")
+        .expect("Failed to acquire a lock, failing function");
+    debug!("Lock acquired");
+
+    if lock.acquired_expired_lock {
+        error!("Somehow oxbow acquired an already expired lock, failing");
+        panic!("Failing in hopes of acquiring a fresh lock");
+    }
+    lock
+}
+
+/**
+ * Helper function to release a given [dynamodb_lock::LockItem].
+ *
+ * Will return true if the lock was successfully released.
+ */
+async fn release_lock(
+    lock: dynamodb_lock::LockItem,
+    lock_client: &dynamodb_lock::DynamoDbLockClient,
+) -> bool {
+    if let Err(e) = lock_client.release_lock(&lock).await {
+        error!("Failing to properly release the lock {:?}: {:?}", lock, e);
+        return false;
+    }
+    return true;
 }
 
 /*

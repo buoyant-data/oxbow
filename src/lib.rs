@@ -1,11 +1,11 @@
 /*
  * The lib module contains the business logic of oxbow, regardless of the interface implementation
  */
-use deltalake::action::*;
 use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
 use deltalake::partitions::DeltaTablePartition;
+use deltalake::protocol::*;
 use deltalake::storage::DeltaObjectStore;
 use deltalake::{DeltaResult, DeltaTable, ObjectMeta, ObjectStore, SchemaDataType, SchemaField};
 use futures::StreamExt;

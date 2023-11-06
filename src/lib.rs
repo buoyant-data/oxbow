@@ -100,8 +100,13 @@ pub async fn create_table_with(
     use deltalake::schema::Schema;
 
     let partitions = partition_columns_from(files);
-    let smallest = find_smallest_file(files)
-        .expect("Failed to find the smallest parquet file, which is fatal");
+    let smallest = find_smallest_file(files);
+    if smallest.is_none() {
+        let msg = "Failed to find the smallest parquet file, which is fatal";
+        error!("{}", &msg);
+        return Err(deltalake::DeltaTableError::Generic(msg.into()));
+    }
+    let smallest = smallest.unwrap();
     debug!(
         "Using the smallest parquet file for schema inference: {:?}",
         smallest.location
@@ -493,6 +498,35 @@ mod tests {
             schema.get_field_with_name("c2").is_ok(),
             "The schema does not include the expected partition key `c2`"
         );
+    }
+
+    /*
+     * See <https://github.com/buoyant-data/oxbow/issues/5>
+     */
+    #[tokio::test]
+    async fn create_table_without_files() {
+        let (_tempdir, store) =
+            util::create_temp_path_with("./tests/data/hive/deltatbl-partitioned");
+
+        let files = vec![];
+
+        let result = create_table_with(&files, store.clone()).await;
+        assert!(result.is_err());
+    }
+    #[tokio::test]
+    async fn attempt_to_convert_without_auth() {
+        let region = std::env::var("AWS_REGION");
+        std::env::set_var("AWS_REGION", "custom");
+
+        let files: Vec<ObjectMeta> = vec![];
+        let store = object_store_for(&Url::parse("s3://example/non-existent").unwrap());
+        let result = create_table_with(&files, store).await;
+        println!("result from create_table_with: {:?}", result);
+        assert!(result.is_err());
+
+        if let Ok(region) = region {
+            std::env::set_var("AWS_REGION", region);
+        }
     }
 
     /*

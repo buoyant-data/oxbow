@@ -8,6 +8,7 @@ use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
 use aws_lambda_events::sqs::SqsEvent;
 use chrono::prelude::*;
 use deltalake::{ObjectMeta, Path};
+use dynamodb_lock::Region;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use serde_json::json;
 use serde_json::Value;
@@ -36,8 +37,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
-    let dynamodb_client = rusoto_dynamodb::DynamoDbClient::new(rusoto_core::Region::default());
-
     /*
      * The response variable will be spat out at the end of the Lambda, since this Lambda is
      * intended to be executed by S3 Bucket Notifications this doesn't really serve any useful
@@ -70,7 +69,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             ..Default::default()
         };
         let lock_client =
-            dynamodb_lock::DynamoDbLockClient::new(dynamodb_client.clone(), lock_options);
+            dynamodb_lock::DynamoDbLockClient::for_region(Region::default()).with_options(lock_options);
         let location = Url::parse(table_name).expect("Failed to turn a table into a URL");
         debug!("Handling table: {:?}", location);
         let files = by_table

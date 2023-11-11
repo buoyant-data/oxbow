@@ -1,6 +1,6 @@
 [package]
 name = "oxbow"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 keywords = ["deltalake", "parquet", "lambda", "delta"]
 homepage = "https://github.com/buoyant-data/oxbow"
@@ -19,7 +19,7 @@ path = "src/bin/lambda.rs"
 [dependencies]
 anyhow = "*"
 chrono = "*"
-deltalake = { version = "0.16", features = ["s3", "json"]}
+deltalake = { version = "0.16.3", features = ["s3", "json"]}
 futures = "*"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }
@@ -31,11 +31,10 @@ gumdrop = "=0.8"
 
 # lambda requirements
 aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
-dynamodb_lock = { version = "*" }
+dynamodb_lock = { version = "0.6.0" }
 lambda_runtime = { version = "0.8" }
 rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}
 rusoto_credential = { version = "0.47"}
-rusoto_dynamodb = { version = "0.47", default-features = false}
 rusoto_s3 = { version = "0.47", default-features = false, features = ["rustls"] }
 serde = { version = "=1", features = ["rc"] }
 serde_json = "=1"

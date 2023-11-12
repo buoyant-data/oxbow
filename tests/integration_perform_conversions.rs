@@ -16,7 +16,7 @@ async fn test_all_tables() -> Result<(), anyhow::Error> {
         if let Ok(dir) = path {
             let dir = dir.path();
             let dir_str = dir.to_str().expect("Failed to make dir_str");
-            let table_str = setup(&dir_str).await?;
+            let table_str = setup(dir_str).await?;
 
             let table = oxbow::convert(&table_str).await;
             assert!(
@@ -26,7 +26,7 @@ async fn test_all_tables() -> Result<(), anyhow::Error> {
                 table
             );
             assert!(
-                table?.get_files().len() > 0,
+                !table?.get_files().is_empty(),
                 "Expected four files converted for {}",
                 dir_str
             );

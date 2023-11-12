@@ -314,10 +314,10 @@ mod tests {
             let dir = tempfile::tempdir().expect("Failed to create a temporary directory");
 
             let options = CopyOptions::new();
-            let _ = copy_items(&vec![path.as_path()], dir.path(), &options)
+            let _ = copy_items(&[path.as_path()], dir.path(), &options)
                 .expect("Failed to copy items over");
             // Remove the tempdir's copied _delta_log/ since the test must recreate it
-            remove_items(&vec![dir.path().join("_delta_log")])
+            remove_items(&[dir.path().join("_delta_log")])
                 .expect("Failed to remove temp _delta_log/");
 
             let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn add_actions_for_empty() {
-        let result = add_actions_for(&vec![]);
+        let result = add_actions_for(&[]);
         assert_eq!(0, result.len());
     }
 
@@ -406,7 +406,7 @@ mod tests {
     #[test]
     fn partition_columns_from_empty() {
         let expected: Vec<String> = vec![];
-        assert_eq!(expected, partition_columns_from(&vec![]));
+        assert_eq!(expected, partition_columns_from(&[]));
     }
 
     #[test]

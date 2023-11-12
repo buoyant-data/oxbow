@@ -48,7 +48,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     for record in event.payload.records.iter() {
         /* each record is an SqsMessage */
         if let Some(body) = &record.body {
-            let _: S3Event = serde_json::from_str(&body).expect("Failed to deserialize!");
+            let _: S3Event = serde_json::from_str(body).expect("Failed to deserialize!");
             if let Ok(s3event) = serde_json::from_str::<S3Event>(body) {
                 for s3record in s3event.records {
                     records.push(s3record.clone());
@@ -68,8 +68,8 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             partition_key_value: table_name.into(),
             ..Default::default()
         };
-        let lock_client =
-            dynamodb_lock::DynamoDbLockClient::for_region(Region::default()).with_options(lock_options);
+        let lock_client = dynamodb_lock::DynamoDbLockClient::for_region(Region::default())
+            .with_options(lock_options);
         let location = Url::parse(table_name).expect("Failed to turn a table into a URL");
         debug!("Handling table: {:?}", location);
         let files = by_table
@@ -80,7 +80,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
 
         if let Ok(mut table) = deltalake::open_table(&table_name).await {
             info!("Opened table to append: {:?}", table);
-            let lock = acquire_lock(&table_name, &lock_client).await;
+            let lock = acquire_lock(table_name, &lock_client).await;
 
             match oxbow::append_to_table(files, &mut table).await {
                 Ok(version) => {
@@ -123,8 +123,8 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         } else {
             // create the table with our objects
             info!("Creating new Delta table at: {}", location);
-            let lock = acquire_lock(&table_name, &lock_client).await;
-            let table = oxbow::convert(&table_name).await;
+            let lock = acquire_lock(table_name, &lock_client).await;
+            let table = oxbow::convert(table_name).await;
             let _ = release_lock(lock, &lock_client).await;
 
             if table.is_err() {
@@ -180,7 +180,7 @@ async fn release_lock(
         error!("Failing to properly release the lock {:?}: {:?}", lock, e);
         return false;
     }
-    return true;
+    true
 }
 
 /*
@@ -302,7 +302,7 @@ mod tests {
     fn infer_log_path_from_object() {
         let object = "some/path/to/a/prefix/alpha.parquet";
         let expected = "some/path/to/a/prefix";
-        assert_eq!(expected, infer_log_path_from(&object));
+        assert_eq!(expected, infer_log_path_from(object));
     }
 
     /*
@@ -313,14 +313,14 @@ mod tests {
     fn infer_log_path_from_object_at_root() {
         let object = "some.parquet";
         let expected = "";
-        assert_eq!(expected, infer_log_path_from(&object));
+        assert_eq!(expected, infer_log_path_from(object));
     }
 
     #[test]
     fn infer_log_path_from_hive_partitioned_object() {
         let object = "some/path/ds=2023-05-05/site=delta.io/beta.parquet";
         let expected = "some/path";
-        assert_eq!(expected, infer_log_path_from(&object));
+        assert_eq!(expected, infer_log_path_from(object));
     }
 
     #[test]

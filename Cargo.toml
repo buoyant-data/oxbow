@@ -1,6 +1,6 @@
 [package]
 name = "oxbow"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 keywords = ["deltalake", "parquet", "lambda", "delta"]
 homepage = "https://github.com/buoyant-data/oxbow"
@@ -17,13 +17,13 @@ name = "oxbow-lambda"
 path = "src/bin/lambda.rs"
 
 [dependencies]
-anyhow = "*"
-chrono = "*"
+anyhow = "=1"
+chrono = "0.4.31"
 deltalake = { version = "0.16.4", features = ["s3", "json"]}
-futures = "*"
+futures = "0.3.29"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }
-tokio = { version = "1", features = ["macros"] }
+tokio = { version = "=1", features = ["macros"] }
 url = { version = "2.3", features = ["serde"] }
 
 # cli requirements
@@ -41,7 +41,7 @@ serde_json = "=1"
 urlencoding = "=2"
 
 [dev-dependencies]
-fs_extra = "1"
+fs_extra = "=1"
 tempfile = "*"
 
 [profile.release]

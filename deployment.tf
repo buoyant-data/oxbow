@@ -4,7 +4,7 @@
 resource "aws_lambda_function" "oxbow" {
   description   = "A simple lambda for converting parquet files to delta tables"
   filename      = "target/lambda/oxbow-lambda/bootstrap.zip"
-  function_name = "oxbow-conversion"
+  function_name = "oxbow-delta-lake-conversion"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "provided"
   runtime       = "provided.al2"
@@ -26,6 +26,15 @@ resource "aws_lambda_event_source_mapping" "oxbow-trigger" {
 resource "aws_sqs_queue" "oxbow" {
   name   = "oxbow-notification-queue"
   policy = data.aws_iam_policy_document.queue.json
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.oxbow_dlq.arn
+    maxReceiveCount     = 8
+  })
+}
+
+resource "aws_sqs_queue" "oxbow_dlq" {
+  name = "obxow-notification-dlq"
 }
 
 resource "aws_s3_bucket" "parquets" {
@@ -135,11 +144,7 @@ resource "aws_dynamodb_table" "oxbow_locking" {
     name = "key"
     type = "S"
   }
-  # The leaseDuration is used by dynamodb-lock-rs and *must* be a Number type
-  attribute {
-    name = "leaseDuration"
-    type = "N"
-  }
+
   ttl {
     attribute_name = "leaseDuration"
     enabled        = true

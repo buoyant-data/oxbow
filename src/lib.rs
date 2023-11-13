@@ -169,6 +169,11 @@ pub async fn append_to_table(files: &[ObjectMeta], table: &mut DeltaTable) -> De
         .cloned()
         .collect();
 
+    if new_files.is_empty() {
+        debug!("No new files to add on {table:?}, skipping a commit");
+        return Ok(table.version());
+    }
+
     let actions = add_actions_for(&new_files);
 
     deltalake::operations::transaction::commit(
@@ -590,6 +595,44 @@ mod tests {
             .await
             .expect("Failed to append files");
         table.load().await.expect("Failed to reload the table");
+        assert_eq!(table.get_files().len(), 4, "Found redundant files!");
+    }
+
+    /*
+     * Discovered an issue where append_to_table can create a new empty commit if no files are
+     * provided. That's silly!
+     */
+    #[tokio::test]
+    async fn test_avoid_appending_empty_list() {
+        let (_tempdir, store) =
+            util::create_temp_path_with("./tests/data/hive/deltatbl-partitioned");
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+
+        let mut table = create_table_with(&files, store.clone())
+            .await
+            .expect("Failed to create table");
+        let schema = table.get_schema().expect("Failed to get schema");
+        assert!(
+            schema.get_field_with_name("c2").is_ok(),
+            "The schema does not include the expected partition key `c2`"
+        );
+        assert_eq!(0, table.version(), "Unexpected version");
+        // Start with an empty set
+        let files = vec![];
+
+        append_to_table(&files, &mut table)
+            .await
+            .expect("Failed to append files");
+        table.load().await.expect("Failed to reload the table");
+        assert_eq!(
+            0,
+            table.version(),
+            "Unexpected version, should not have created a commit"
+        );
         assert_eq!(table.get_files().len(), 4, "Found redundant files!");
     }
 }

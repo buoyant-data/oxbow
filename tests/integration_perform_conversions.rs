@@ -18,7 +18,7 @@ async fn test_all_tables() -> Result<(), anyhow::Error> {
             let dir_str = dir.to_str().expect("Failed to make dir_str");
             let table_str = setup(dir_str).await?;
 
-            let table = oxbow::convert(&table_str).await;
+            let table = oxbow::convert(&table_str, None).await;
             assert!(
                 table.is_ok(),
                 "Failure on convesion for {}: {:?}",
@@ -43,7 +43,7 @@ async fn non_partitioned_table() -> Result<(), anyhow::Error> {
     let table_str = setup("tests/data/hive/deltatbl-non-partitioned/").await?;
 
     // Perform the actual conversion on the tempdir
-    let table = oxbow::convert(&table_str).await;
+    let table = oxbow::convert(&table_str, None).await;
     assert!(table.is_ok(), "Failed to convert table: {:?}", table);
     assert_eq!(
         2,
@@ -81,7 +81,7 @@ async fn partitioned_table() -> Result<(), anyhow::Error> {
     }
     expected_partitions.sort();
 
-    let table = oxbow::convert(&table_str).await?;
+    let table = oxbow::convert(&table_str, None).await?;
     assert_eq!(4, table.get_files().len(), "Expected four files converted");
     let mut found_partitions: Vec<String> = vec![];
     for partition in table.get_partition_values() {

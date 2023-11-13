@@ -19,8 +19,16 @@ use std::sync::Arc;
  * convert is the main function to be called by the CLI or other "one shot" executors which just
  * need to take a given location and convert it all at once
  */
-pub async fn convert(location: &str) -> DeltaResult<DeltaTable> {
-    match deltalake::open_table(&location).await {
+pub async fn convert(
+    location: &str,
+    storage_options: Option<HashMap<String, String>>,
+) -> DeltaResult<DeltaTable> {
+    let table_result = match storage_options {
+        Some(so) => deltalake::open_table_with_storage_options(&location, so).await,
+        None => deltalake::open_table(&location).await,
+    };
+
+    match table_result {
         Err(e) => {
             debug!("No Delta table at {}: {:?}", location, e);
             /*
@@ -225,8 +233,8 @@ pub fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
             stats_parsed: None,
             tags: None,
             partition_values: partitions_from(om.location.as_ref())
-                .iter()
-                .map(|p| (p.key.into(), Some(p.value.into())))
+                .into_iter()
+                .map(|p| ((p.key), Some(p.value)))
                 .collect(),
             partition_values_parsed: None,
         })
@@ -513,6 +521,7 @@ mod tests {
         let result = create_table_with(&files, store.clone()).await;
         assert!(result.is_err());
     }
+
     #[tokio::test]
     async fn attempt_to_convert_without_auth() {
         let region = std::env::var("AWS_REGION");

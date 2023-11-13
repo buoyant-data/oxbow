@@ -42,7 +42,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let location = table_location(&flags)?;
     info!("Using the table location of: {:?}", location);
 
-    oxbow::convert(&location)
+    oxbow::convert(&location, None)
         .await
         .expect("Failed to convert location");
     Ok(())

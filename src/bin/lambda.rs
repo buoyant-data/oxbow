@@ -77,8 +77,20 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             .expect("Failed to get the files for a table, impossible!");
         // messages is just for sending responses out of the lambda
         let mut messages = vec![];
+        let mut storage_options: HashMap<String, String> = HashMap::default();
+        // Ensure that the DeltaTable we get back uses the table-name as a partition key
+        // when locking in DynamoDb: <https://github.com/buoyant-data/oxbow/issues/9>
+        //
+        // Without this setting each Lambda invocation will use the same default key `delta-rs`
+        // when locking in DynamoDb.
+        storage_options.insert(
+            "DYNAMO_LOCK_PARTITION_KEY_VALUE".into(),
+            format!("{table_name}:delta").into(),
+        );
 
-        if let Ok(mut table) = deltalake::open_table(&table_name).await {
+        if let Ok(mut table) =
+            deltalake::open_table_with_storage_options(&table_name, storage_options).await
+        {
             info!("Opened table to append: {:?}", table);
             let lock = acquire_lock(table_name, &lock_client).await;
 

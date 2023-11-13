@@ -17,8 +17,11 @@ name = "oxbow-lambda"
 path = "src/bin/lambda.rs"
 
 [dependencies]
+# <https://github.com/cargo-lambda/cargo-lambda/issues/566>
+cc = "=1.0.83"
 anyhow = "=1"
 chrono = "0.4.31"
+dynamodb_lock = { version = "0.6.1" }
 deltalake = { version = "0.16.4", features = ["s3", "json"]}
 futures = "0.3.29"
 tracing = { version = "0.1", features = ["log"] }
@@ -31,7 +34,6 @@ gumdrop = "=0.8"
 
 # lambda requirements
 aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
-dynamodb_lock = { version = "0.6.0" }
 lambda_runtime = { version = "0.8" }
 rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}
 rusoto_credential = { version = "0.47"}

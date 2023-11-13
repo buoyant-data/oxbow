@@ -59,6 +59,12 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("processing records: {records:?}");
     let records = records_with_url_decoded_keys(&records);
     let by_table = objects_by_table(&records);
+
+    if by_table.is_empty() {
+        debug!("No elligible events found, exiting early");
+        return Ok(json!(response));
+    }
+
     debug!("Grouped by table: {by_table:?}");
 
     for table_name in by_table.keys() {
@@ -77,7 +83,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         // when locking in DynamoDb.
         storage_options.insert(
             "DYNAMO_LOCK_PARTITION_KEY_VALUE".into(),
-            format!("{table_name}:delta").into(),
+            "{table_name}:delta".into(),
         );
 
         if let Ok(mut table) =
@@ -183,6 +189,10 @@ fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRecord
 
     records
         .iter()
+        .filter(|record| match &record.s3.object.key {
+            None => true,
+            Some(key) => !key.contains("_delta_log"),
+        })
         .map(|record| {
             let mut replacement = record.clone();
             if let Some(key) = &replacement.s3.object.key {
@@ -191,10 +201,6 @@ fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRecord
                 }
             }
             replacement
-        })
-        .filter(|record| match &record.s3.object.url_decoded_key {
-            None => true,
-            Some(key) => !key.contains("_delta_log"),
         })
         .collect()
 }
@@ -366,7 +372,7 @@ mod tests {
         let buf = std::fs::read_to_string("tests/data/s3-event-multiple.json")
             .expect("Failed to read file");
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
-        assert_eq!(3, event.records.len());
+        assert_eq!(4, event.records.len());
 
         let groupings = objects_by_table(&records_with_url_decoded_keys(&event.records));
 
@@ -400,5 +406,17 @@ mod tests {
 
         let records = records_with_url_decoded_keys(&event.records);
         assert_eq!(event.records.len(), records.len());
+    }
+
+    #[test]
+    fn test_records_with_url_decoded_keys_checkpoint_parquets() {
+        let buf = std::fs::read_to_string("tests/data/s3-event-multiple.json")
+            .expect("Failed to read file");
+        let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
+        assert_eq!(4, event.records.len());
+
+        let records = records_with_url_decoded_keys(&event.records);
+        // Thec checkpoint file should be removewd
+        assert_eq!(3, records.len());
     }
 }

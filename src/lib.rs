@@ -73,6 +73,7 @@ pub fn object_store_for(location: &Url) -> Arc<DeltaObjectStore> {
 pub async fn discover_parquet_files(
     store: Arc<DeltaObjectStore>,
 ) -> deltalake::DeltaResult<Vec<ObjectMeta>> {
+    debug!("Discovering parquet files for {store:?}");
     let mut result = vec![];
     let mut iter = store.list(None).await?;
 
@@ -82,12 +83,15 @@ pub async fn discover_parquet_files(
     while let Some(path) = iter.next().await {
         // Result<ObjectMeta> has been yielded
         if let Ok(meta) = path {
-            debug!("Discovered file: {:?}", meta);
-
             if let Some(ext) = meta.location.extension() {
                 match ext {
                     "parquet" => {
-                        result.push(meta);
+                        if let Some(filename) = meta.location.filename() {
+                            if !filename.ends_with(".checkpoint.parquet") {
+                                debug!("Discovered file: {:?}", meta);
+                                result.push(meta);
+                            }
+                        }
                     }
                     &_ => {}
                 }
@@ -536,6 +540,20 @@ mod tests {
         if let Ok(region) = region {
             std::env::set_var("AWS_REGION", region);
         }
+    }
+
+    #[tokio::test]
+    async fn test_avoid_discovering_checkpoints() {
+        let test_dir =
+            std::fs::canonicalize("./tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
+                .expect("Failed to canonicalize");
+        let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
+        let store = object_store_for(&url);
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 2, "No files discovered");
     }
 
     /*

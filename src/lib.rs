@@ -30,7 +30,7 @@ pub async fn convert(
 
     match table_result {
         Err(e) => {
-            debug!("No Delta table at {}: {:?}", location, e);
+            info!("No Delta table at {}: {:?}", location, e);
             /*
              * Parse the given location as a URL in a way that can be passed into
              * some delta APIs
@@ -73,7 +73,7 @@ pub fn object_store_for(location: &Url) -> Arc<DeltaObjectStore> {
 pub async fn discover_parquet_files(
     store: Arc<DeltaObjectStore>,
 ) -> deltalake::DeltaResult<Vec<ObjectMeta>> {
-    debug!("Discovering parquet files for {store:?}");
+    info!("Discovering parquet files for {store:?}");
     let mut result = vec![];
     let mut iter = store.list(None).await?;
 
@@ -119,7 +119,7 @@ pub async fn create_table_with(
         return Err(deltalake::DeltaTableError::Generic(msg.into()));
     }
     let smallest = smallest.unwrap();
-    debug!(
+    info!(
         "Using the smallest parquet file for schema inference: {:?}",
         smallest.location
     );

@@ -21,8 +21,8 @@ path = "src/bin/lambda.rs"
 cc = "=1.0.83"
 anyhow = "=1"
 chrono = "0.4.31"
-dynamodb_lock = { version = "0.6.1" }
 deltalake = { version = "0.16.4", features = ["s3", "json"]}
+dynamodb_lock = "0.6.1"
 futures = "0.3.29"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }

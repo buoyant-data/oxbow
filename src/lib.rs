@@ -24,7 +24,7 @@ pub async fn convert(
     storage_options: Option<HashMap<String, String>>,
 ) -> DeltaResult<DeltaTable> {
     let table_result = match storage_options {
-        Some(so) => deltalake::open_table_with_storage_options(&location, so).await,
+        Some(ref so) => deltalake::open_table_with_storage_options(&location, so.clone()).await,
         None => deltalake::open_table(&location).await,
     };
 
@@ -44,7 +44,7 @@ pub async fn convert(
                         .expect("Failed to parse the location as a file path")
                 }
             };
-            let store = object_store_for(&location);
+            let store = object_store_for(&location, storage_options);
             let files = discover_parquet_files(store.clone()).await?;
             debug!(
                 "Files identified for turning into a delta table: {:?}",
@@ -62,8 +62,14 @@ pub async fn convert(
 /**
  * Create the ObjectStore for the given location
  */
-pub fn object_store_for(location: &Url) -> Arc<DeltaObjectStore> {
-    let options = HashMap::new();
+pub fn object_store_for(
+    location: &Url,
+    storage_options: Option<HashMap<String, String>>,
+) -> Arc<DeltaObjectStore> {
+    let options = match storage_options {
+        None => HashMap::default(),
+        Some(s) => s,
+    };
     Arc::new(DeltaObjectStore::try_new(location.clone(), options).expect("Failed to make store"))
 }
 
@@ -338,7 +344,7 @@ mod tests {
                 .expect("Failed to remove temp _delta_log/");
 
             let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
-            (dir, object_store_for(&url))
+            (dir, object_store_for(&url, None))
         }
     }
 
@@ -346,7 +352,7 @@ mod tests {
     async fn discover_parquet_files_empty_dir() {
         let dir = tempfile::tempdir().expect("Failed to create a temporary directory");
         let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
-        let store = object_store_for(&url);
+        let store = object_store_for(&url, None);
 
         let files = discover_parquet_files(store.clone())
             .await
@@ -359,7 +365,7 @@ mod tests {
         let path = std::fs::canonicalize("./tests/data/hive/deltatbl-non-partitioned")
             .expect("Failed to canonicalize");
         let url = Url::from_file_path(path).expect("Failed to parse local path");
-        let store = object_store_for(&url);
+        let store = object_store_for(&url, None);
 
         let files = discover_parquet_files(store.clone())
             .await
@@ -537,7 +543,7 @@ mod tests {
         std::env::set_var("AWS_REGION", "custom");
 
         let files: Vec<ObjectMeta> = vec![];
-        let store = object_store_for(&Url::parse("s3://example/non-existent").unwrap());
+        let store = object_store_for(&Url::parse("s3://example/non-existent").unwrap(), None);
         let result = create_table_with(&files, store).await;
         println!("result from create_table_with: {:?}", result);
         assert!(result.is_err());
@@ -553,7 +559,7 @@ mod tests {
             std::fs::canonicalize("./tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
                 .expect("Failed to canonicalize");
         let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
-        let store = object_store_for(&url);
+        let store = object_store_for(&url, None);
 
         let files = discover_parquet_files(store.clone())
             .await

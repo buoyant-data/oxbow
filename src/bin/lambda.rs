@@ -86,6 +86,14 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             "DYNAMO_LOCK_PARTITION_KEY_VALUE".into(),
             "{table_name}:delta".into(),
         );
+        let lock_options = dynamodb_lock::DynamoDbOptions {
+            lease_duration: 60,
+            partition_key_value: table_name.into(),
+            ..Default::default()
+        };
+        let lock_client = dynamodb_lock::DynamoDbLockClient::for_region(Region::default())
+            .with_options(lock_options);
+        let lock = acquire_lock(table_name, &lock_client).await;
 
         if let Ok(mut table) =
             deltalake::open_table_with_storage_options(&table_name, storage_options.clone()).await
@@ -101,49 +109,34 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
 
                     if version % 10 == 0 {
                         info!("Creating a checkpoint for {}", location);
-                        match deltalake::checkpoints::create_checkpoint_for(
-                            version,
-                            table.get_state(),
-                            &table.object_store(),
-                        )
-                        .await
-                        {
-                            Ok(_) => {
-                                info!("Successfully created checkpoint");
+                        debug!("Reloading the table state to get the latest version");
+                        let _ = table.load().await;
+                        if table.version() == version {
+                            match deltalake::checkpoints::create_checkpoint(&table)
+                            .await
+                            {
+                                Ok(_) => info!("Successfully created checkpoint"),
+                                Err(e) => error!("Failed to create checkpoint for {location}: {e:?}"),
                             }
-                            Err(e) => {
-                                let message = format!(
-                                    "Failed to create checkpoint for {}! {:?}",
-                                    location, e
-                                );
-                                error!("{}", &message);
-                                messages.push(message);
-                            }
+                        }
+                        else {
+                            error!("The table was reloaded to create a checkpoint but a new version already exists!");
                         }
                     }
                 }
                 Err(err) => {
                     let message = format!("Failed to append to the table {}: {:?}", location, err);
                     error!("{}", &message);
+                    let _ = release_lock(lock, &lock_client).await;
                     return Err(Box::new(err));
                 }
             }
         } else {
             // create the table with our objects
-            let lock_name = format!("{table_name}:oxbow-create");
-            let lock_options = dynamodb_lock::DynamoDbOptions {
-                lease_duration: 60,
-                partition_key_value: lock_name.into(),
-                ..Default::default()
-            };
-            let lock_client = dynamodb_lock::DynamoDbLockClient::for_region(Region::default())
-                .with_options(lock_options);
 
             info!("Creating new Delta table at: {location}");
-            let lock = acquire_lock(&table_name, &lock_client).await;
             let table = oxbow::convert(table_name, Some(storage_options)).await;
             info!("Created table at: {location}");
-            let _ = release_lock(lock, &lock_client).await;
 
             if table.is_err() {
                 let message = format!("Failed to create new Delta table: {:?}", table);
@@ -156,6 +149,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         }
 
         response.insert(location, messages);
+        let _ = release_lock(lock, &lock_client).await;
     }
 
     Ok(json!(response))

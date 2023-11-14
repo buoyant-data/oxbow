@@ -130,17 +130,17 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             }
         } else {
             // create the table with our objects
+            let lock_name = format!("{table_name}:oxbow-create");
             let lock_options = dynamodb_lock::DynamoDbOptions {
                 lease_duration: 60,
-                partition_key_value: table_name.into(),
+                partition_key_value: lock_name.into(),
                 ..Default::default()
             };
-            let lock_name = "{table_name}:oxbow-create";
             let lock_client = dynamodb_lock::DynamoDbLockClient::for_region(Region::default())
                 .with_options(lock_options);
 
             info!("Creating new Delta table at: {location}");
-            let lock = acquire_lock(lock_name, &lock_client).await;
+            let lock = acquire_lock(&table_name, &lock_client).await;
             let table = oxbow::convert(table_name, Some(storage_options)).await;
             info!("Created table at: {location}");
             let _ = release_lock(lock, &lock_client).await;

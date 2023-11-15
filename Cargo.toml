@@ -21,7 +21,7 @@ path = "src/bin/lambda.rs"
 cc = "=1.0.83"
 anyhow = "=1"
 chrono = "0.4.31"
-deltalake = { version = "0.16.4", features = ["s3", "json"]}
+deltalake = { version = "0.16.5", features = ["s3", "json"]}
 dynamodb_lock = "0.6.1"
 futures = "0.3.29"
 tracing = { version = "0.1", features = ["log"] }

@@ -7,10 +7,9 @@
 use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
 use aws_lambda_events::sqs::SqsEvent;
 use chrono::prelude::*;
-use deltalake::{ObjectMeta, Path};
+use deltalake::{DeltaTableError, ObjectMeta, Path};
 use dynamodb_lock::Region;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
-use serde_json::json;
 use serde_json::Value;
 use tracing::log::*;
 use url::Url;
@@ -37,13 +36,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
-    /*
-     * The response variable will be spat out at the end of the Lambda, since this Lambda is
-     * intended to be executed by S3 Bucket Notifications this doesn't really serve any useful
-     * purposes outside of manual testing
-     */
-    let mut response: HashMap<Url, Vec<String>> = HashMap::new();
-
     let mut records = vec![];
     for record in event.payload.records.iter() {
         /* each record is an SqsMessage */
@@ -63,7 +55,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
 
     if by_table.is_empty() {
         info!("No elligible events found, exiting early");
-        return Ok(json!(response));
+        return Ok("{}".into());
     }
 
     debug!("Grouped by table: {by_table:?}");
@@ -74,8 +66,6 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         let files = by_table
             .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
-        // messages is just for sending responses out of the lambda
-        let mut messages = vec![];
         let mut storage_options: HashMap<String, String> = HashMap::default();
         // Ensure that the DeltaTable we get back uses the table-name as a partition key
         // when locking in DynamoDb: <https://github.com/buoyant-data/oxbow/issues/9>
@@ -95,64 +85,64 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             .with_options(lock_options);
         let lock = acquire_lock(table_name, &lock_client).await;
 
-        if let Ok(mut table) =
-            deltalake::open_table_with_storage_options(&table_name, storage_options.clone()).await
+        match deltalake::open_table_with_storage_options(&table_name, storage_options.clone()).await
         {
-            info!("Opened table to append: {:?}", table);
+            Ok(mut table) => {
+                info!("Opened table to append: {:?}", table);
 
-            match oxbow::append_to_table(files, &mut table).await {
-                Ok(version) => {
-                    messages.push(format!(
-                        "Successfully appended version {} to table at {}",
-                        version, location
-                    ));
+                match oxbow::append_to_table(files, &mut table).await {
+                    Ok(version) => {
+                        info!(
+                            "Successfully appended version {} to table at {}",
+                            version, location
+                        );
 
-                    if version % 10 == 0 {
-                        info!("Creating a checkpoint for {}", location);
-                        debug!("Reloading the table state to get the latest version");
-                        let _ = table.load().await;
-                        if table.version() == version {
-                            match deltalake::checkpoints::create_checkpoint(&table)
-                            .await
-                            {
-                                Ok(_) => info!("Successfully created checkpoint"),
-                                Err(e) => error!("Failed to create checkpoint for {location}: {e:?}"),
+                        if version % 10 == 0 {
+                            info!("Creating a checkpoint for {}", location);
+                            debug!("Reloading the table state to get the latest version");
+                            let _ = table.load().await;
+                            if table.version() == version {
+                                match deltalake::checkpoints::create_checkpoint(&table).await {
+                                    Ok(_) => info!("Successfully created checkpoint"),
+                                    Err(e) => {
+                                        error!("Failed to create checkpoint for {location}: {e:?}")
+                                    }
+                                }
+                            } else {
+                                error!("The table was reloaded to create a checkpoint but a new version already exists!");
                             }
                         }
-                        else {
-                            error!("The table was reloaded to create a checkpoint but a new version already exists!");
-                        }
+                    }
+                    Err(err) => {
+                        error!("Failed to append to the table {}: {:?}", location, err);
+                        let _ = release_lock(lock, &lock_client).await;
+                        return Err(Box::new(err));
                     }
                 }
-                Err(err) => {
-                    let message = format!("Failed to append to the table {}: {:?}", location, err);
-                    error!("{}", &message);
-                    let _ = release_lock(lock, &lock_client).await;
-                    return Err(Box::new(err));
+            }
+            Err(DeltaTableError::NotATable(_e)) => {
+                // create the table with our objects
+                info!("Creating new Delta table at: {location}");
+                let table = oxbow::convert(table_name, Some(storage_options)).await;
+                info!("Created table at: {location}");
+
+                if table.is_err() {
+                    error!("Failed to create new Delta table: {:?}", table);
+                    // Propogate that error up so the function fails
+                    let _ = table?;
                 }
             }
-        } else {
-            // create the table with our objects
-
-            info!("Creating new Delta table at: {location}");
-            let table = oxbow::convert(table_name, Some(storage_options)).await;
-            info!("Created table at: {location}");
-
-            if table.is_err() {
-                let message = format!("Failed to create new Delta table: {:?}", table);
-                error!("{}", &message);
-                // Propogate that error up so the function fails
-                let _ = table?;
-            } else {
-                messages.push(format!("Successfully created table at {}", location));
+            Err(source) => {
+                let _ = release_lock(lock, &lock_client).await;
+                error!("Failed to open the Delta table for some reason: {source:?}");
+                return Err(Box::new(source));
             }
         }
 
-        response.insert(location, messages);
         let _ = release_lock(lock, &lock_client).await;
     }
 
-    Ok(json!(response))
+    Ok("[]".into())
 }
 
 /**

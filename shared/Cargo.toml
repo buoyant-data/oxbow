@@ -1,0 +1,19 @@
+[package]
+name = "oxbow"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+deltalake = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+
+futures = "0.3.29"
+
+[dev-dependencies]
+chrono = "0.4.31"
+fs_extra = "=1"
+tempfile = "*"
+tokio = { workspace = true }

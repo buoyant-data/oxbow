@@ -1,0 +1,15 @@
+[package]
+name = "oxbow-cli"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+gumdrop = "=0.8"
+oxbow = { path = "../shared" }

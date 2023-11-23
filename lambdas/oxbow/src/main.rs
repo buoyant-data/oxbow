@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn group_objects_to_tables() {
-        let buf = std::fs::read_to_string("tests/data/s3-event-multiple.json")
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple.json")
             .expect("Failed to read file");
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
         assert_eq!(4, event.records.len());
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_records_with_url_decoded_keys() {
-        let buf = std::fs::read_to_string("tests/data/s3-event-multiple-urlencoded.json")
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple-urlencoded.json")
             .expect("Failed to read file");
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
         assert_eq!(3, event.records.len());
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn test_records_with_url_decoded_keys_checkpoint_parquets() {
-        let buf = std::fs::read_to_string("tests/data/s3-event-multiple.json")
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple.json")
             .expect("Failed to read file");
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
         assert_eq!(4, event.records.len());

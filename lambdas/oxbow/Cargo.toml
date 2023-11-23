@@ -1,0 +1,30 @@
+[package]
+name = "oxbow-lambda"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = "0.4.31"
+deltalake = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
+
+oxbow = { path = "../../shared" }
+
+aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
+dynamodb_lock = "0.6.1"
+lambda_runtime = { version = "0.8" }
+rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}
+rusoto_credential = { version = "0.47"}
+rusoto_s3 = { version = "0.47", default-features = false, features = ["rustls"] }
+serde = { version = "=1", features = ["rc"] }
+serde_json = "=1"
+urlencoding = "=2"
+# lambda requirements
+# <https://github.com/cargo-lambda/cargo-lambda/issues/566>
+#cc = "=1.0.83"

@@ -362,7 +362,7 @@ mod tests {
 
     #[tokio::test]
     async fn discover_parquet_files_full_dir() {
-        let path = std::fs::canonicalize("./tests/data/hive/deltatbl-non-partitioned")
+        let path = std::fs::canonicalize("../tests/data/hive/deltatbl-non-partitioned")
             .expect("Failed to canonicalize");
         let url = Url::from_file_path(path).expect("Failed to parse local path");
         let store = object_store_for(&url, None);
@@ -500,7 +500,7 @@ mod tests {
     #[tokio::test]
     async fn create_schema_for_partitioned_path() {
         let (_tempdir, store) =
-            util::create_temp_path_with("./tests/data/hive/deltatbl-partitioned");
+            util::create_temp_path_with("../tests/data/hive/deltatbl-partitioned");
         let files = discover_parquet_files(store.clone())
             .await
             .expect("Failed to discover parquet files");
@@ -529,7 +529,7 @@ mod tests {
     #[tokio::test]
     async fn create_table_without_files() {
         let (_tempdir, store) =
-            util::create_temp_path_with("./tests/data/hive/deltatbl-partitioned");
+            util::create_temp_path_with("../tests/data/hive/deltatbl-partitioned");
 
         let files = vec![];
 
@@ -556,7 +556,7 @@ mod tests {
     #[tokio::test]
     async fn test_avoid_discovering_checkpoints() {
         let test_dir =
-            std::fs::canonicalize("./tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
+            std::fs::canonicalize("../tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
                 .expect("Failed to canonicalize");
         let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
         let store = object_store_for(&url, None);
@@ -576,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn test_avoiding_adding_duplicate_files() {
         let (_tempdir, store) =
-            util::create_temp_path_with("./tests/data/hive/deltatbl-partitioned");
+            util::create_temp_path_with("../tests/data/hive/deltatbl-partitioned");
 
         let files = discover_parquet_files(store.clone())
             .await
@@ -611,7 +611,7 @@ mod tests {
     #[tokio::test]
     async fn test_avoid_appending_empty_list() {
         let (_tempdir, store) =
-            util::create_temp_path_with("./tests/data/hive/deltatbl-partitioned");
+            util::create_temp_path_with("../tests/data/hive/deltatbl-partitioned");
 
         let files = discover_parquet_files(store.clone())
             .await

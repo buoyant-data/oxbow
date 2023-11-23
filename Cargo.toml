@@ -1,6 +1,13 @@
-[package]
-name = "oxbow"
-version = "0.7.1"
+[workspace]
+members = [
+    "cli",
+    "lambdas/*",
+    "shared",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.8.0"
 edition = "2021"
 keywords = ["deltalake", "parquet", "lambda", "delta"]
 homepage = "https://github.com/buoyant-data/oxbow"
@@ -8,43 +15,13 @@ repository = "https://github.com/buoyant-data/oxbow"
 description = "Tooling for converting directories of Apache Parquet files into Delta Lake tables"
 license-file = "LICENSE.txt"
 
-[[bin]]
-name = "oxbow-cli"
-path = "src/bin/cli.rs"
-
-[[bin]]
-name = "oxbow-lambda"
-path = "src/bin/lambda.rs"
-
-[dependencies]
-# <https://github.com/cargo-lambda/cargo-lambda/issues/566>
-cc = "=1.0.83"
+[workspace.dependencies]
 anyhow = "=1"
-chrono = "0.4.31"
 deltalake = { version = "0.16.5", features = ["s3", "json"]}
-dynamodb_lock = "0.6.1"
-futures = "0.3.29"
+tokio = { version = "=1", features = ["macros"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }
-tokio = { version = "=1", features = ["macros"] }
 url = { version = "2.3", features = ["serde"] }
-
-# cli requirements
-gumdrop = "=0.8"
-
-# lambda requirements
-aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
-lambda_runtime = { version = "0.8" }
-rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}
-rusoto_credential = { version = "0.47"}
-rusoto_s3 = { version = "0.47", default-features = false, features = ["rustls"] }
-serde = { version = "=1", features = ["rc"] }
-serde_json = "=1"
-urlencoding = "=2"
-
-[dev-dependencies]
-fs_extra = "=1"
-tempfile = "*"
 
 [profile.release]
 panic = "abort"

@@ -74,7 +74,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         // when locking in DynamoDb.
         storage_options.insert(
             "DYNAMO_LOCK_PARTITION_KEY_VALUE".into(),
-            "{table_name}:delta".into(),
+            format!("{table_name}:delta"),
         );
         let lock_options = dynamodb_lock::DynamoDbOptions {
             lease_duration: 60,

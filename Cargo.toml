@@ -1,6 +1,6 @@
 [package]
 name = "oxbow"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 keywords = ["deltalake", "parquet", "lambda", "delta"]
 homepage = "https://github.com/buoyant-data/oxbow"

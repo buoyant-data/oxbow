@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "cli",
+    "crates/*",
     "lambdas/*",
-    "shared",
 ]
 resolver = "2"
 

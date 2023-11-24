@@ -1,5 +1,5 @@
 [package]
-name = "oxbow-cli"
+name = "group-events"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
@@ -10,6 +10,9 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+url = { workspace = true }
 
-gumdrop = "=0.8"
-oxbow = { path = "../crates/oxbow" }
+oxbow = { path = "../../crates/oxbow" }
+
+aws_lambda_events = { version = "0.10.0", default-features = false, features = ["sqs"]}
+lambda_runtime = { version = "0.8" }

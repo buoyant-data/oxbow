@@ -1,7 +1,5 @@
 /*
- * The lambda module contains the Lambda specific implementation of oxbox.
- *
- * This can be compiled with the `lambda` feature
+ * The lambda crate contains the Lambda specific implementation of oxbow.
  */
 
 use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};

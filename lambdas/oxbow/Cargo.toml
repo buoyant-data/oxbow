@@ -14,7 +14,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
-oxbow = { path = "../../shared" }
+oxbow = { path = "../../crates/oxbow" }
 
 aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
 dynamodb_lock = "0.6.1"
@@ -25,6 +25,3 @@ rusoto_s3 = { version = "0.47", default-features = false, features = ["rustls"] 
 serde = { version = "=1", features = ["rc"] }
 serde_json = "=1"
 urlencoding = "=2"
-# lambda requirements
-# <https://github.com/cargo-lambda/cargo-lambda/issues/566>
-#cc = "=1.0.83"

@@ -13,6 +13,7 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
 oxbow = { path = "../../crates/oxbow" }
+oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 aws_lambda_events = { version = "0.10.0", default-features = false, features = ["sqs"]}
 lambda_runtime = { version = "0.8" }

@@ -155,10 +155,9 @@ async fn acquire_lock(
 ) -> dynamodb_lock::LockItem {
     debug!("Attempting to retrieve a lock for {key:?}");
     let lock = lock_client
-        .try_acquire_lock(Some(key))
+        .acquire_lock(Some(key))
         .await
-        .expect("Failed to acquire a lock")
-        .expect("Failed to acquire a lock, failing function");
+        .expect("Failed to acquire a lock");
     debug!("Lock acquired");
 
     if lock.acquired_expired_lock {

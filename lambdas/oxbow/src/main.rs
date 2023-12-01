@@ -2,7 +2,6 @@
  * The lambda crate contains the Lambda specific implementation of oxbow.
  */
 
-use aws_lambda_events::s3::S3Event;
 use aws_lambda_events::sqs::SqsEvent;
 use deltalake::DeltaTableError;
 use dynamodb_lock::Region;
@@ -35,19 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
-    let mut records = vec![];
-    for record in event.payload.records.iter() {
-        /* each record is an SqsMessage */
-        if let Some(body) = &record.body {
-            let _: S3Event = serde_json::from_str(body).expect("Failed to deserialize!");
-            if let Ok(s3event) = serde_json::from_str::<S3Event>(body) {
-                for s3record in s3event.records {
-                    records.push(s3record.clone());
-                }
-            }
-        }
-    }
-
+    let records = s3_from_sqs(event.payload)?;
     debug!("processing records: {records:?}");
     let records = records_with_url_decoded_keys(&records);
     let by_table = objects_by_table(&records);

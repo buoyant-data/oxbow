@@ -1,9 +1,10 @@
 /**
  * oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas
  */
-use aws_lambda_events::s3::{S3EventRecord, S3Object};
+use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
+use aws_lambda_events::sqs::SqsEvent;
 use chrono::prelude::*;
-use deltalake::{ObjectMeta, Path};
+use deltalake::{DeltaResult, ObjectMeta, Path};
 
 use std::collections::HashMap;
 
@@ -71,7 +72,7 @@ pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<Object
  * sake oxbow will attempt to put the `_delta_log/` some place predictable to ensure that
  * `add` actions in the log can use relative file paths for newly added objects
  */
-fn infer_log_path_from(path: &str) -> String {
+pub fn infer_log_path_from(path: &str) -> String {
     use std::path::{Component, Path};
 
     let mut root = vec![];
@@ -98,6 +99,25 @@ fn infer_log_path_from(path: &str) -> String {
 }
 
 /**
+ * Convert the given [aws_lambda_events::sqs::SqsEvent] to a collection of
+ * [aws_lambda_events::s3::S3EventRecord] entities. This is mostly useful for handling S3 Bucket
+ * Notifications which have been passed into SQS
+ */
+pub fn s3_from_sqs(event: SqsEvent) -> DeltaResult<Vec<S3EventRecord>> {
+    let mut records = vec![];
+    for record in event.records.iter() {
+        /* each record is an SqsMessage */
+        if let Some(body) = &record.body {
+            let s3event: S3Event = serde_json::from_str::<S3Event>(body)?;
+            for s3record in s3event.records {
+                records.push(s3record.clone());
+            }
+        }
+    }
+    Ok(records)
+}
+
+/**
  * Convert an [`S3Object`] into an [`ObjectMeta`] for use in the creation of Delta transactions
  *
  * This is a _lossy_ conversion since the two structs do not share the same set of information,
@@ -121,7 +141,7 @@ fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_lambda_events::s3::S3Event;
+    use aws_lambda_events::sqs::SqsMessage;
 
     #[test]
     fn infer_log_path_from_object() {
@@ -277,6 +297,39 @@ mod tests {
             2,
             table_two.len(),
             "Shoulid only be two objects in table two"
+        );
+    }
+
+    #[test]
+    fn test_s3_from_sqs() {
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple.json")
+            .expect("Failed to read file");
+        let message = SqsMessage {
+            body: Some(buf),
+            ..Default::default()
+        };
+        let event = SqsEvent {
+            records: vec![message],
+        };
+
+        let events = s3_from_sqs(event).expect("Failed to get events");
+        assert_eq!(4, events.len(), "Unexpected number of entries");
+    }
+
+    #[test]
+    fn test_s3_from_sqs_with_invalid() {
+        let message = SqsMessage {
+            body: Some("This ain't no valid JSON".into()),
+            ..Default::default()
+        };
+        let event = SqsEvent {
+            records: vec![message],
+        };
+
+        let response = s3_from_sqs(event);
+        assert!(
+            response.is_err(),
+            "Should have returned an error trying to deserialize"
         );
     }
 }

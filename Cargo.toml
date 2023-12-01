@@ -19,6 +19,7 @@ license-file = "LICENSE.txt"
 anyhow = "=1"
 deltalake = { version = "0.16.5", features = ["s3", "json"]}
 tokio = { version = "=1", features = ["macros"] }
+serde_json = "1"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }
 url = { version = "2.3", features = ["serde"] }

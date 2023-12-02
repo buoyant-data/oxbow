@@ -20,3 +20,4 @@ aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
 aws_lambda_events = { version = "0.10.0", default-features = false, features = ["sqs"]}
 aws-sdk-sqs = "1.1.0"
 lambda_runtime = { version = "0.8" }
+uuid = { version = "1.6.1", features = ["v4"] }

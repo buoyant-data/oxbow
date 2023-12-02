@@ -1,7 +1,9 @@
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::{S3Event, S3EventRecord};
+use aws_sdk_sqs::types::SendMessageBatchRequestEntry;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use tracing::log::*;
+use uuid::Uuid;
 
 use std::collections::HashMap;
 
@@ -22,7 +24,6 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
     let queue_url = std::env::var("QUEUE_URL").expect("Failed to get the FIFO output queue");
 
-    use aws_sdk_sqs::types::SendMessageBatchRequestEntry;
     let mut entries: Vec<SendMessageBatchRequestEntry> = vec![];
     for (group_id, records) in segmented.iter() {
         info!(
@@ -30,11 +31,12 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
             records.len(),
             group_id
         );
+        let uuid = Uuid::new_v4();
         let body = S3Event {
             records: records.to_vec(),
         };
         let entry = SendMessageBatchRequestEntry::builder()
-            .id(group_id.to_string())
+            .id(uuid.simple().to_string())
             .message_body(serde_json::to_string(&body)?)
             .message_group_id(group_id.to_string())
             .build()?;
@@ -42,14 +44,19 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     }
     debug!("Ordered entries to send: {entries:?}");
 
-    let response = client
-        .send_message_batch()
-        .queue_url(queue_url.clone())
-        .set_entries(Some(entries))
-        .send()
-        .await?;
-    debug!("SQS response: {response:?}");
-    info!("Successfully batched events into SQS FIFO at {queue_url}");
+    if !entries.is_empty() {
+        info!("Relaying {} entries to {queue_url}", entries.len());
+        let response = client
+            .send_message_batch()
+            .queue_url(queue_url.clone())
+            .set_entries(Some(entries))
+            .send()
+            .await?;
+        debug!("SQS response: {response:?}");
+        info!("Successfully batched events into SQS FIFO at {queue_url}");
+    } else {
+        info!("No entries to send");
+    }
 
     Ok(())
 }

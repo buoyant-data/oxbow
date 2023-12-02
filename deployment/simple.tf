@@ -1,9 +1,24 @@
 # This Terraform file is necessary to configure the basic
-# infrastructure around the Optimize lambda function
+# infrastructure around the Oxbow lambda function
+resource "aws_s3_bucket" "parquets" {
+  bucket = "oxbow-simple"
+}
+
+resource "aws_s3_bucket_notification" "bucket-notifications" {
+  bucket = aws_s3_bucket.parquets.id
+
+  queue {
+    queue_arn     = aws_sqs_queue.oxbow.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_suffix = ".parquet"
+  }
+
+  depends_on = [aws_lambda_permission.allow-bucket]
+}
 
 resource "aws_lambda_function" "oxbow" {
   description   = "A simple lambda for converting parquet files to delta tables"
-  filename      = "target/lambda/oxbow-lambda/bootstrap.zip"
+  filename      = "../target/lambda/oxbow-lambda/bootstrap.zip"
   function_name = "oxbow-delta-lake-conversion"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "provided"
@@ -37,28 +52,12 @@ resource "aws_sqs_queue" "oxbow_dlq" {
   name = "obxow-notification-dlq"
 }
 
-resource "aws_s3_bucket" "parquets" {
-  bucket = "oxbow-dev-parquet"
-}
-
-resource "aws_lambda_permission" "allow_bucket" {
+resource "aws_lambda_permission" "allow-bucket" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.oxbow.arn
   principal     = "s3.amazonaws.com"
   source_arn    = aws_s3_bucket.parquets.arn
-}
-
-resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = aws_s3_bucket.parquets.id
-
-  queue {
-    queue_arn     = aws_sqs_queue.oxbow.arn
-    events        = ["s3:ObjectCreated:*"]
-    filter_suffix = ".parquet"
-  }
-
-  depends_on = [aws_lambda_permission.allow_bucket]
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -83,7 +82,7 @@ resource "aws_iam_policy" "lambda_permissions" {
     Statement = [
       {
         Action   = ["dynamodb:*"]
-        Resource = aws_dynamodb_table.oxbow_locking.arn
+        Resource = ["*"]
         Effect   = "Allow"
       },
       {
@@ -93,32 +92,11 @@ resource "aws_iam_policy" "lambda_permissions" {
       },
       {
         Action   = ["sqs:*"]
-        Resource = aws_sqs_queue.oxbow.arn
+        Resource = "*"
         Effect   = "Allow"
       }
     ]
   })
-}
-
-data "aws_iam_policy_document" "queue" {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
-    actions = ["sqs:SendMessage"]
-    # Hard-coding an ARN like syntax here because of the dependency cycle
-    resources = ["arn:aws:sqs:*:*:oxbow-notification-queue"]
-
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [aws_s3_bucket.parquets.arn]
-    }
-  }
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
@@ -151,34 +129,3 @@ resource "aws_dynamodb_table" "oxbow_locking" {
   }
 }
 
-### Bootstrapping/configuration
-
-variable "s3_bucket_arn" {
-  type        = string
-  default     = "*"
-  description = "The ARN for the S3 bucket that the optimize function will optimize"
-}
-
-variable "aws_access_key" {
-  type    = string
-  default = ""
-}
-
-variable "aws_secret_key" {
-  type    = string
-  default = ""
-}
-
-provider "aws" {
-  region     = "us-west-2"
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_key
-
-  default_tags {
-    tags = {
-      ManagedBy   = "Terraform"
-      environment = terraform.workspace
-      workspace   = terraform.workspace
-    }
-  }
-}

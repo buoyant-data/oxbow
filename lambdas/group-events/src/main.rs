@@ -25,9 +25,14 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let queue_url = std::env::var("QUEUE_URL").expect("Failed to get the FIFO output queue");
 
     let mut entries: Vec<SendMessageBatchRequestEntry> = vec![];
+
     for (group_id, records) in segmented.iter() {
+        // The group-id for the batch must only contain alphanumberic characters and punctuation
+        // and be 1-128 characters. Computing the md5 hash here ensures that this group_id is
+        // always compatible with SQS
+        let group_id = md5::compute(group_id);
         info!(
-            "Sending {} records with group_id: {}",
+            "Sending {} records with group_id: {:x}",
             records.len(),
             group_id
         );
@@ -38,7 +43,7 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         let entry = SendMessageBatchRequestEntry::builder()
             .id(uuid.simple().to_string())
             .message_body(serde_json::to_string(&body)?)
-            .message_group_id(group_id.to_string())
+            .message_group_id(format!("{:x}", group_id))
             .build()?;
         entries.push(entry);
     }

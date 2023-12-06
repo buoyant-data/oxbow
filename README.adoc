@@ -9,7 +9,7 @@ endif::[]
 
 = Oxbow
 
-Oxbow is a simple project to take an existing storage location which contains
+Oxbow is a project to take an existing storage location which contains
 link:https://parquet.apache.org[Apache Parquet] files into a
 link:https://delta.io[Delta Lake table]. It is intended to run both as an AWS
 Lambda or as a command line application.
@@ -47,7 +47,7 @@ into a Delta table!
 
 === Lambda
 
-The `deployment.tf` file contains the necessary Terraform to provision the
+The `deployment/` directory contains the necessary Terraform to provision the
 function, a DynamoDB table for locking, S3 bucket, and IAM permissions.
 
 After configuring the necessary authentication for Terraform, the following
@@ -68,6 +68,18 @@ allowed. For bucket locations with massive `.parquet` files, this may need to
 be tuned.
 ====
 
+==== Advanced
+
+To help ameliorate
+link:https://www.buoyantdata.com/blog/2023-11-27-concurrency-limitations-with-deltalake-on-aws.html[concurrency
+challenges for Delta Lake on AWS] with the DynamoDb lock, the `deployment/`
+directory also contains an "advanced" pattern which uses the `group-events`
+Lambda to help serialize S3 Bucket Notifications into an AWS SQS FIFO with
+Message Group IDs.
+
+To build all the necessary code locally for the Advanced pattern, please run
+`make build-release`
+
 
 == Development
 
@@ -78,7 +90,7 @@ lambda` command line tool, e.g.:
 
 [source,bash]
 ----
-cargo lambda build --features lambda --release --output-format zip
+cargo lambda build --release --output-format zip
 ----
 
 This will produce the file: `target/lambda/oxbow-lambda/bootstrap.zip` which can be
@@ -102,4 +114,4 @@ a `.parquet` file is added to the bucket/prefix.
 
 == Licensing
 
-This repository is intentionally licensed under the link:https://www.gnu.org/licenses/agpl-3.0.en.html[AGPL 3.0]. If your organization is interested in re-licensing this function for re-use, contact me via email for commercial licensing terms: `rtyler@brokenco.de`
+This repository is licensed under the link:https://www.gnu.org/licenses/agpl-3.0.en.html[AGPL 3.0]. If your organization is interested in re-licensing this function for re-use, contact me via email for commercial licensing terms: `rtyler@brokenco.de`

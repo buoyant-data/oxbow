@@ -77,12 +77,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Upload Lambda zip
+      - name: Upload oxbow lambda
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/lambda/oxbow-lambda/bootstrap.zip
-          asset_name: oxbow-lambda-bootstrap.zip
+          asset_name: oxbow-lambda-bootstrap-${{ github.ref }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload group-events lambda
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/lambda/group-events/bootstrap.zip
+          asset_name: group-events-lambda-bootstrap-${{ github.ref }}.zip
           asset_content_type: application/zip

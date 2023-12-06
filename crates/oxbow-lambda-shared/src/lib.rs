@@ -98,20 +98,49 @@ pub fn infer_log_path_from(path: &str) -> String {
     root.join("/")
 }
 
-/**
- * Convert the given [aws_lambda_events::sqs::SqsEvent] to a collection of
- * [aws_lambda_events::s3::S3EventRecord] entities. This is mostly useful for handling S3 Bucket
- * Notifications which have been passed into SQS
- */
+/// A simple structure to make deserializing test events for identification easier
+///
+/// See <fhttps://github.com/buoyant-data/oxbow/issues/8>
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct TestEvent {
+    event: String,
+}
+
+/// Convert the given [aws_lambda_events::sqs::SqsEvent] to a collection of
+///  [aws_lambda_events::s3::S3EventRecord] entities. This is mostly useful for handling S3 Bucket
+///  Notifications which have been passed into SQS
+///
+///  In the case where the [aws_lambda_events::sqs::SqsEvent] contains an `s3:TestEvent` which is
+///  fired when S3 Bucket Notifications are first enabled, the event will be ignored to avoid
+///  errorsin the processing pipeline
 pub fn s3_from_sqs(event: SqsEvent) -> DeltaResult<Vec<S3EventRecord>> {
     let mut records = vec![];
     for record in event.records.iter() {
         /* each record is an SqsMessage */
         if let Some(body) = &record.body {
-            let s3event: S3Event = serde_json::from_str::<S3Event>(body)?;
-            for s3record in s3event.records {
-                records.push(s3record.clone());
-            }
+            match serde_json::from_str::<S3Event>(body) {
+                Ok(s3event) => {
+                    for s3record in s3event.records {
+                        records.push(s3record.clone());
+                    }
+                }
+                Err(err) => {
+                    // if we cannot deserialize and the event is an s3::TestEvent, then we should
+                    // just return empty records.
+                    let test_event = serde_json::from_str::<TestEvent>(body);
+                    // Early exit with the original error if we cannot parse the JSON at all
+                    if test_event.is_err() {
+                        return Err(err.into());
+                    }
+
+                    // Ignore the error on deserialization if the event ends up being an S3
+                    // TestEvent which is fired when bucket notifications are originally configured
+                    if "s3:TestEvent" != test_event.unwrap().event {
+                        return Err(err.into());
+                    }
+                }
+            };
         }
     }
     Ok(records)
@@ -330,6 +359,25 @@ mod tests {
         assert!(
             response.is_err(),
             "Should have returned an error trying to deserialize"
+        );
+    }
+
+    #[test]
+    fn test_s3_from_sqs_with_test_event() {
+        let buf = std::fs::read_to_string("../../tests/data/s3-test-event.json")
+            .expect("Failed to read file");
+        let message = SqsMessage {
+            body: Some(buf),
+            ..Default::default()
+        };
+        let event = SqsEvent {
+            records: vec![message],
+        };
+
+        let response = s3_from_sqs(event);
+        assert!(
+            response.is_ok(),
+            "Should have treated a test event like a no-op: {response:?}"
         );
     }
 }

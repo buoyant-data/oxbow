@@ -84,7 +84,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/lambda/oxbow-lambda/bootstrap.zip
-          asset_name: oxbow-lambda-bootstrap-${{ github.ref }}.zip
+          asset_name: oxbow-lambda-bootstrap-${{ github.ref_name }}.zip
           asset_content_type: application/zip
 
       - name: Upload group-events lambda
@@ -94,5 +94,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/lambda/group-events/bootstrap.zip
-          asset_name: group-events-lambda-bootstrap-${{ github.ref }}.zip
+          asset_name: group-events-lambda-bootstrap-${{ github.ref_name }}.zip
           asset_content_type: application/zip

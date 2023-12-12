@@ -111,7 +111,7 @@ resource "aws_lambda_permission" "advanced-allow-bucket" {
 # tables.
 resource "aws_dynamodb_table" "oxbow_advanced_locking" {
   name         = "oxbow_advanced_lock_table"
-  billing_mode = "PROVISIONED"
+  billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
   hash_key       = "key"
   read_capacity  = 10

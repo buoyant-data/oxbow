@@ -112,7 +112,7 @@ resource "aws_iam_role" "iam_for_lambda" {
 # tables.
 resource "aws_dynamodb_table" "oxbow_locking" {
   name         = "oxbow_lock_table"
-  billing_mode = "PROVISIONED"
+  billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
   hash_key       = "key"
   read_capacity  = 10

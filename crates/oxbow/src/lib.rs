@@ -167,14 +167,18 @@ pub async fn create_table_with(
         .expect("Failed to convert the schema for creating the table");
 
     let mut columns = schema.get_fields().clone();
+
     for partition in &partitions {
-        let field = SchemaField::new(
-            partition.into(),
-            SchemaDataType::primitive("string".into()),
-            true,
-            HashMap::new(),
-        );
-        columns.push(field);
+        // Only add the partition if it does not already exist in the schema
+        if schema.get_field_with_name(partition).is_err() {
+            let field = SchemaField::new(
+                partition.into(),
+                SchemaDataType::primitive("string".into()),
+                true,
+                HashMap::new(),
+            );
+            columns.push(field);
+        }
     }
 
     /*
@@ -683,5 +687,36 @@ mod tests {
             "Unexpected version, should not have created a commit"
         );
         assert_eq!(table.get_files().len(), 4, "Found redundant files!");
+    }
+
+    /*
+     * There are some cases where data will be laid out in a hive partition scheme but the parquet
+     * files may not contain the partitioning information. When using EXPORT DATA from BigQuery it
+     * will automatically insert the hive-style partition information into the parquet schema
+     */
+    #[tokio::test]
+    async fn test_avoid_duplicate_partition_columns() {
+        let (_tempdir, store) = util::create_temp_path_with("../../tests/data/hive/gcs-export");
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 2, "No files discovered");
+
+        let table = create_table_with(&files, store.clone())
+            .await
+            .expect("Failed to create table");
+        let schema = table.get_schema().expect("Failed to get schema");
+        let fields: Vec<&str> = schema.get_fields().iter().map(|f| f.get_name()).collect();
+
+        let mut uniq = HashSet::new();
+        for field in &fields {
+            uniq.insert(field.clone());
+        }
+        assert_eq!(
+            uniq.len(),
+            fields.len(),
+            "There were not unique fields, that probably means a `ds` column is doubled up"
+        );
     }
 }

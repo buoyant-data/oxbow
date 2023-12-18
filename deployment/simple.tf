@@ -9,7 +9,7 @@ resource "aws_s3_bucket_notification" "bucket-notifications" {
 
   queue {
     queue_arn     = aws_sqs_queue.oxbow.arn
-    events        = ["s3:ObjectCreated:*"]
+    events        = ["s3:ObjectCreated:*", "s3:ObjectRemoved:Delete"]
     filter_suffix = ".parquet"
   }
 

@@ -35,6 +35,14 @@ pub fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRe
         .collect()
 }
 
+/// Struct to keep track of the table modifications needing to be made based on
+/// [S3EventRecord] objects .
+#[derive(Debug, Clone, Default)]
+pub struct TableMods {
+    pub adds: Vec<ObjectMeta>,
+    pub removes: Vec<ObjectMeta>,
+}
+
 /**
  * Group the objects from the notification based on the delta tables they should be added to.
  *
@@ -43,8 +51,8 @@ pub fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRe
  * we iterate the records, we can group them based on the delta table and then create the
  * appropriate transactions
  */
-pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<ObjectMeta>> {
-    let mut result = HashMap::new();
+pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, TableMods> {
+    let mut mods = HashMap::new();
 
     for record in records.iter() {
         if let Some(bucket) = &record.s3.bucket.name {
@@ -53,16 +61,22 @@ pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, Vec<Object
 
             let key = format!("s3://{}/{}", bucket, log_path);
 
-            if !result.contains_key(&key) {
-                result.insert(key.clone(), vec![]);
+            if !mods.contains_key(&key) {
+                mods.insert(key.clone(), TableMods::default());
             }
-            if let Some(objects) = result.get_mut(&key) {
-                objects.push(om);
+            if let Some(objects) = mods.get_mut(&key) {
+                if let Some(event_name) = &record.event_name {
+                    if event_name.starts_with("ObjectCreated") {
+                        objects.adds.push(om);
+                    } else if event_name == "ObjectRemoved:Delete" {
+                        objects.removes.push(om);
+                    }
+                }
             }
         }
     }
 
-    result
+    mods
 }
 
 /**
@@ -315,7 +329,7 @@ mod tests {
             .expect("Failed to get the first table");
         assert_eq!(
             1,
-            table_one.len(),
+            table_one.adds.len(),
             "Shoulid only be one object in table one"
         );
 
@@ -324,7 +338,7 @@ mod tests {
             .expect("Failed to get the second table");
         assert_eq!(
             2,
-            table_two.len(),
+            table_two.adds.len(),
             "Shoulid only be two objects in table two"
         );
     }
@@ -343,6 +357,33 @@ mod tests {
 
         let events = s3_from_sqs(event).expect("Failed to get events");
         assert_eq!(4, events.len(), "Unexpected number of entries");
+    }
+
+    #[test]
+    fn test_s3_from_sqs_with_delete() {
+        let buf = r#"{"Records":[{"eventVersion":"2.1","eventSource":"aws:s3","awsRegion":"us-west-2","eventTime":"2023-12-18T00:22:24.292Z","eventName":"ObjectRemoved:Delete","userIdentity":{"principalId":"A16S3A764ZBGJN"},"requestParameters":{"sourceIPAddress":"76.218.225.124"},"responseElements":{"x-amz-request-id":"CWK6W9YANZBH6SK4","x-amz-id-2":"H7P6nIKhchv9soZ4pnX0GsAj3zqqdrShFddk4kX9UpSbC2C5FL9XNvNtSxtTD1Nt0ZtTnREeZIMqO1IsSpkebocjUTRJkumh"},"s3":{"s3SchemaVersion":"1.0","configurationId":"test-delete","bucket":{"name":"oxbow-simple","ownerIdentity":{"principalId":"A16S3A764ZBGJN"},"arn":"arn:aws:s3:::oxbow-simple"},"object":{"key":"gcs-export/ds%3D2023-12-12/testing_oxbow-partitioned2_ds%3D2023-12-12_000000000000.parquet","sequencer":"00657F90C047858AE9"}}}]}"#;
+        let message = SqsMessage {
+            body: Some(buf.into()),
+            ..Default::default()
+        };
+        let event = SqsEvent {
+            records: vec![message],
+        };
+
+        let events = s3_from_sqs(event).expect("Failed to get events");
+        assert_eq!(1, events.len(), "Unexpected number of entries");
+
+        let records = records_with_url_decoded_keys(&events);
+        let tables = objects_by_table(records.as_slice());
+        if let Some(mods) = tables.get("s3://oxbow-simple/gcs-export") {
+            assert_eq!(
+                mods.removes.len(),
+                1,
+                "Should have recorded a removes table modification"
+            );
+        } else {
+            assert!(false, "Failed to find the right key on {tables:?}");
+        }
     }
 
     #[test]

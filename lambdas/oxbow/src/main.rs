@@ -49,7 +49,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     for table_name in by_table.keys() {
         let location = Url::parse(table_name).expect("Failed to turn a table into a URL");
         debug!("Handling table: {:?}", location);
-        let files = by_table
+        let table_mods = by_table
             .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
         let mut storage_options: HashMap<String, String> = HashMap::default();
@@ -76,7 +76,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             Ok(mut table) => {
                 info!("Opened table to append: {:?}", table);
 
-                match oxbow::append_to_table(files, &mut table).await {
+                match oxbow::append_to_table(table_mods.adds.as_slice(), &mut table).await {
                     Ok(version) => {
                         info!(
                             "Successfully appended version {} to table at {}",
@@ -103,6 +103,30 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                         error!("Failed to append to the table {}: {:?}", location, err);
                         let _ = release_lock(lock, &lock_client).await;
                         return Err(Box::new(err));
+                    }
+                }
+
+                if !table_mods.removes.is_empty() {
+                    info!(
+                        "{} Remove actions are expected in this operation",
+                        table_mods.removes.len()
+                    );
+                    match oxbow::remove_from_table(table_mods.removes.as_slice(), &mut table).await
+                    {
+                        Ok(version) => {
+                            info!(
+                                "Successfully created version {} with remove actions",
+                                version
+                            );
+                        }
+                        Err(err) => {
+                            error!(
+                                "Failed to create removes on the table {}: {:?}",
+                                location, err
+                            );
+                            let _ = release_lock(lock, &lock_client).await;
+                            return Err(Box::new(err));
+                        }
                     }
                 }
             }

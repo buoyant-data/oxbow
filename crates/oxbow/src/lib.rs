@@ -226,6 +226,24 @@ pub async fn append_to_table(files: &[ObjectMeta], table: &mut DeltaTable) -> De
     .await
 }
 
+/// Remove the given files from an already existing and initialized [DeltaTable]
+pub async fn remove_from_table(files: &[ObjectMeta], table: &mut DeltaTable) -> DeltaResult<i64> {
+    let actions = remove_actions_for(files);
+
+    if actions.is_empty() {
+        return Ok(table.version());
+    }
+
+    deltalake::operations::transaction::commit(
+        table.object_store().as_ref(),
+        &actions,
+        DeltaOperation::Delete { predicate: None },
+        table.get_state(),
+        None,
+    )
+    .await
+}
+
 /**
  * Take an iterator of files and determine what looks like a partition column from it
  */
@@ -284,6 +302,26 @@ pub fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
             partition_values_parsed: None,
         })
         .map(Action::add)
+        .collect()
+}
+
+/// Provide a series of Remove actions for the given [ObjectMeta] entries
+pub fn remove_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
+    files
+        .iter()
+        .map(|om| Remove {
+            path: om.location.to_string(),
+            data_change: true,
+            size: Some(om.size as i64),
+            partition_values: Some(
+                partitions_from(om.location.as_ref())
+                    .into_iter()
+                    .map(|p| ((p.key), Some(p.value)))
+                    .collect(),
+            ),
+            ..Default::default()
+        })
+        .map(Action::remove)
         .collect()
 }
 
@@ -453,6 +491,20 @@ mod tests {
             e_tag: None,
         }];
         let result = add_actions_for(&files);
+        assert_eq!(1, result.len());
+    }
+
+    #[test]
+    fn remove_actions_for_not_empty() {
+        let files = vec![ObjectMeta {
+            location: Path::from(
+                "part-00001-f2126b8d-1594-451b-9c89-c4c2481bfd93-c000.snappy.parquet",
+            ),
+            last_modified: Utc::now(),
+            size: 689,
+            e_tag: None,
+        }];
+        let result = remove_actions_for(&files);
         assert_eq!(1, result.len());
     }
 
@@ -717,6 +769,103 @@ mod tests {
             uniq.len(),
             fields.len(),
             "There were not unique fields, that probably means a `ds` column is doubled up"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_from_table() {
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+
+        let mut table = create_table_with(&files, store.clone())
+            .await
+            .expect("Failed to create table");
+        let schema = table.get_schema().expect("Failed to get schema");
+        assert!(
+            schema.get_field_with_name("c2").is_ok(),
+            "The schema does not include the expected partition key `c2`"
+        );
+        assert_eq!(0, table.version(), "Unexpected version");
+
+        remove_from_table(&files, &mut table)
+            .await
+            .expect("Failed to append files");
+        table.load().await.expect("Failed to reload the table");
+        assert_eq!(
+            1,
+            table.version(),
+            "Unexpected version, should have created a commit"
+        );
+        assert_eq!(table.get_files().len(), 0, "Found redundant files!");
+    }
+
+    #[tokio::test]
+    async fn test_remove_unknown_from_table() {
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+
+        // Only creating the table with some of the files
+        let mut table = create_table_with(&files[0..1].to_vec(), store.clone())
+            .await
+            .expect("Failed to create table");
+        let schema = table.get_schema().expect("Failed to get schema");
+        assert!(
+            schema.get_field_with_name("c2").is_ok(),
+            "The schema does not include the expected partition key `c2`"
+        );
+        assert_eq!(0, table.version(), "Unexpected version");
+
+        // Removing _all_ the files we know about, this should not error
+        remove_from_table(&files, &mut table)
+            .await
+            .expect("Failed to append files");
+        table.load().await.expect("Failed to reload the table");
+        assert_eq!(
+            1,
+            table.version(),
+            "Unexpected version, should have created a commit"
+        );
+        assert_eq!(table.get_files().len(), 0, "Found redundant files!");
+    }
+
+    #[tokio::test]
+    async fn test_remove_empty_set() {
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+
+        let files = discover_parquet_files(store.clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+
+        let mut table = create_table_with(&files, store.clone())
+            .await
+            .expect("Failed to create table");
+        let schema = table.get_schema().expect("Failed to get schema");
+        assert!(
+            schema.get_field_with_name("c2").is_ok(),
+            "The schema does not include the expected partition key `c2`"
+        );
+        assert_eq!(0, table.version(), "Unexpected version");
+
+        remove_from_table(&vec![], &mut table)
+            .await
+            .expect("Failed to append files");
+        table.load().await.expect("Failed to reload the table");
+        assert_eq!(
+            0,
+            table.version(),
+            "Unexpected version, should not have created a commit"
         );
     }
 }

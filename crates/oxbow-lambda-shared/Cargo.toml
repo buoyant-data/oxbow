@@ -9,9 +9,10 @@ description.workspace = true
 license-file.workspace = true
 
 [dependencies]
-aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
-chrono = "0.4.31"
+aws_lambda_events = { workspace = true }
 deltalake = { workspace = true }
+
+chrono = "0.4.31"
 serde = { version = "=1", features = ["rc"] }
 serde_json = "=1"
 urlencoding = "=2"

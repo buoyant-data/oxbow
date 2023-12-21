@@ -7,6 +7,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+aws_lambda_events = { workspace = true }
 deltalake = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -17,7 +18,6 @@ url = { workspace = true }
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
-aws_lambda_events = { version = "0.10.0", default-features = false, features = ["s3", "sqs"]}
 dynamodb_lock = "0.6.1"
 lambda_runtime = { version = "0.8" }
 rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}

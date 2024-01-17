@@ -1,13 +1,31 @@
-use aws_lambda_events::event::sqs::SqsEvent;use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use aws_lambda_events::event::sqs::SqsEvent;
+use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use tracing::log::*;
 
+use oxbow_lambda_shared::*;
 
-/// This is the main body for the function.
-/// Write your code inside it.
-/// There are some code example in the following URLs:
-/// - https://github.com/awslabs/aws-lambda-rust-runtime/tree/main/examples
-/// - https://github.com/aws-samples/serverless-rust-demo/
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
-    // Extract some useful information from the request
+    debug!("Receiving event: {:?}", event);
+    let records = s3_from_sqs(event.payload)?;
+    debug!("processing records: {records:?}");
+    let records = records_with_url_decoded_keys(&records);
+    let by_table = objects_by_table(&records);
+
+    if by_table.is_empty() {
+        info!("No elligible events found, exiting early");
+        return Ok(());
+    }
+
+    for table_name in by_table.keys() {
+        match deltalake::open_table(table_name).await {
+            Ok(table) => {
+                debug!("Opened table {table:?} for metrics tracking");
+            },
+            Err(e) => {
+                error!("Failed to open Delta table: {e:?}");
+            }
+        }
+    }
 
     Ok(())
 }
@@ -22,5 +40,6 @@ async fn main() -> Result<(), Error> {
         .without_time()
         .init();
 
+    info!("Starting deltadog");
     run(service_fn(function_handler)).await
 }

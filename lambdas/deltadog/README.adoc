@@ -1,0 +1,18 @@
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:toc: macro
+
+= Delta Dog
+
+The Delta Dog lambda can be triggered to emit table statistics into a
+link:https://www.datadoghq.com/blog/statsd/[statsd] compatible endpoint. Rather
+than periodically scanning the table it relies on events fired from S3 Event
+Notifications
+
+
+toc::[]

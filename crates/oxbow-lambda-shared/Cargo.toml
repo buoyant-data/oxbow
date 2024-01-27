@@ -15,4 +15,5 @@ deltalake = { workspace = true }
 chrono = "0.4.31"
 serde = { version = "=1", features = ["rc"] }
 serde_json = "=1"
+tracing = { workspace = true }
 urlencoding = "=2"

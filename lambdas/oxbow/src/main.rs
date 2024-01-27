@@ -34,7 +34,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
-    let records = s3_from_sqs(event.payload)?;
+    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+        Ok(_) => s3_from_sns(event.payload)?,
+        Err(_) => s3_from_sqs(event.payload)?,
+    };
     debug!("processing records: {records:?}");
     let records = records_with_url_decoded_keys(&records);
     let by_table = objects_by_table(&records);

@@ -14,7 +14,10 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let client = aws_sdk_s3::Client::new(&config);
 
     debug!("Receiving event: {:?}", event);
-    let records = s3_from_sqs(event.payload)?;
+    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+        Ok(_) => s3_from_sns(event.payload)?,
+        Err(_) => s3_from_sqs(event.payload)?,
+    };
     let extensions = extensions_for(&records);
 
     for (locator, tag) in extensions.iter() {

@@ -2,9 +2,11 @@
  * oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas
  */
 use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
+use aws_lambda_events::sns::SnsMessage;
 use aws_lambda_events::sqs::SqsEvent;
 use chrono::prelude::*;
 use deltalake::{DeltaResult, ObjectMeta, Path};
+use tracing::log::*;
 
 use std::collections::HashMap;
 
@@ -160,6 +162,33 @@ pub fn s3_from_sqs(event: SqsEvent) -> DeltaResult<Vec<S3EventRecord>> {
     Ok(records)
 }
 
+/// Convert SQS messages which are from an SNS subscription into the records format most consumers
+/// are expection.
+///
+/// This function basically invokes [s3_from_sqs] after unwrapping the SNS envelope on the
+/// [SqsEvent]
+pub fn s3_from_sns(event: SqsEvent) -> DeltaResult<Vec<S3EventRecord>> {
+    let mut records = vec![];
+
+    for record in event.records.iter() {
+        if let Some(body) = &record.body {
+            match serde_json::from_str::<SnsMessage>(body) {
+                Ok(sns_event) => {
+                    if let Ok(s3_event) = serde_json::from_str::<S3Event>(&sns_event.message) {
+                        for r in s3_event.records.into_iter() {
+                            records.push(r);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to deserialize an SnsMessage: {e:?}");
+                }
+            }
+        }
+    }
+    Ok(records)
+}
+
 /**
  * Convert an [`S3Object`] into an [`ObjectMeta`] for use in the creation of Delta transactions
  *
@@ -185,6 +214,33 @@ fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMe
 mod tests {
     use super::*;
     use aws_lambda_events::sqs::SqsMessage;
+
+    #[test]
+    fn test_s3_from_sns() {
+        let body = r#"
+        {"Type" : "Notification",
+        "MessageId" : "blah",
+        "TopicArn": "arn:blah",
+        "Subject" : "blah",
+        "Message" : "{\"Records\":[{\"eventVersion\":\"2.1\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"us-east-2\",\"eventTime\":\"2024-01-25T20:57:23.379Z\",\"eventName\":\"ObjectCreated:CompleteMultipartUpload\",\"userIdentity\":{\"principalId\":\"AWS:AROAU7FUYKEVYG4GF4IAV:s3-replication\"},\"requestParameters\":{\"sourceIPAddress\":\"10.0.153.194\"},\"responseElements\":{\"x-amz-request-id\":\"RYAX8R8CB6FF1MQN\",\"x-amz-id-2\":\"uLUt4C/TfjwvpObPlTnrWYjOIPH1YT1yJ8jZjqRyLIuTLOxGSkNgKc2Hd1/O7wTP2cd3u59lRtVYrU4ECizehRYw0NGNlL5b\"},\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"tf-s3-queue-20231207170751084400000001\",\"bucket\":{\"name\":\"scribd-data-warehouse-dev\",\"ownerIdentity\":{\"principalId\":\"A1FIHS1B0BWUTQ\"},\"arn\":\"arn:aws:s3:::scribd-data-warehouse-dev\"},\"object\":{\"key\":\"databases/airbyte/faker_users/ds%3D2024-01-25/1706216212007_0.parquet\",\"size\":143785,\"eTag\":\"67165dca52a1089d312e19c3ddf1e342-1\",\"versionId\":\"3v567TKlEQF5IBoeXrFBRiRX8vY.bY1m\",\"sequencer\":\"0065B2CB162FC1AC3B\"}}}]}",
+        "Timestamp" : "2024-01-25T20:57:24.649Z",
+        "Signature" : "",
+        "SignatureVersion" : "",
+        "SigningCertUrl" : "",
+        "UnsubscribeUrl" : ""
+        }
+        "#;
+        let message: SqsMessage = SqsMessage {
+            body: Some(body.to_string()),
+            ..Default::default()
+        };
+        let event: SqsEvent = SqsEvent {
+            records: vec![message],
+        };
+        let res = s3_from_sns(event);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().len(), 1);
+    }
 
     #[test]
     fn infer_log_path_from_object() {

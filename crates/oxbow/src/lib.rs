@@ -763,7 +763,7 @@ mod tests {
 
         let mut uniq = HashSet::new();
         for field in &fields {
-            uniq.insert(field.clone());
+            uniq.insert(field);
         }
         assert_eq!(
             uniq.len(),

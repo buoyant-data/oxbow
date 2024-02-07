@@ -18,6 +18,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         Ok(_) => s3_from_sns(event.payload)?,
         Err(_) => s3_from_sqs(event.payload)?,
     };
+    let records = records_with_url_decoded_keys(&records);
     let extensions = extensions_for(&records);
 
     for (locator, tag) in extensions.iter() {

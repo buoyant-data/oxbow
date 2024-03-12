@@ -4,15 +4,12 @@
 
 use aws_lambda_events::sqs::SqsEvent;
 use deltalake::DeltaTableError;
-use dynamodb_lock::Region;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use serde_json::Value;
 use tracing::log::*;
 use url::Url;
 
 use oxbow_lambda_shared::*;
-
-use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -55,27 +52,10 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         let table_mods = by_table
             .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
-        let mut storage_options: HashMap<String, String> = HashMap::default();
-        // Ensure that the DeltaTable we get back uses the table-name as a partition key
-        // when locking in DynamoDb: <https://github.com/buoyant-data/oxbow/issues/9>
-        //
-        // Without this setting each Lambda invocation will use the same default key `delta-rs`
-        // when locking in DynamoDb.
-        storage_options.insert(
-            "DYNAMO_LOCK_PARTITION_KEY_VALUE".into(),
-            format!("{table_name}:delta"),
-        );
-        let lock_options = dynamodb_lock::DynamoDbOptions {
-            lease_duration: 60,
-            partition_key_value: table_name.into(),
-            ..Default::default()
-        };
-        let lock_client = dynamodb_lock::DynamoDbLockClient::for_region(Region::default())
-            .with_options(lock_options);
-        let lock = acquire_lock(table_name, &lock_client).await;
+        let lock_client = oxbow::lock::client_for(&table_name);
+        let lock = oxbow::lock::acquire(table_name, &lock_client).await;
 
-        match deltalake::open_table_with_storage_options(&table_name, storage_options.clone()).await
-        {
+        match oxbow::lock::open_table(&table_name).await {
             Ok(mut table) => {
                 info!("Opened table to append: {:?}", table);
 
@@ -104,7 +84,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                     }
                     Err(err) => {
                         error!("Failed to append to the table {}: {:?}", location, err);
-                        let _ = release_lock(lock, &lock_client).await;
+                        let _ = oxbow::lock::release(lock, &lock_client).await;
                         return Err(Box::new(err));
                     }
                 }
@@ -127,7 +107,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                                 "Failed to create removes on the table {}: {:?}",
                                 location, err
                             );
-                            let _ = release_lock(lock, &lock_client).await;
+                            let _ = oxbow::lock::release(lock, &lock_client).await;
                             return Err(Box::new(err));
                         }
                     }
@@ -136,7 +116,9 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             Err(DeltaTableError::NotATable(_e)) => {
                 // create the table with our objects
                 info!("Creating new Delta table at: {location}");
-                let table = oxbow::convert(table_name, Some(storage_options)).await;
+                let table =
+                    oxbow::convert(table_name, Some(oxbow::lock::storage_options(&table_name)))
+                        .await;
                 info!("Created table at: {location}");
 
                 if table.is_err() {
@@ -146,55 +128,16 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                 }
             }
             Err(source) => {
-                let _ = release_lock(lock, &lock_client).await;
+                let _ = oxbow::lock::release(lock, &lock_client).await;
                 error!("Failed to open the Delta table for some reason: {source:?}");
                 return Err(Box::new(source));
             }
         }
 
-        let _ = release_lock(lock, &lock_client).await;
+        let _ = oxbow::lock::release(lock, &lock_client).await;
     }
 
     Ok("[]".into())
-}
-
-/**
- * Simple helper function to acquire a lock with DynamoDb
- *
- * This function will panic in the bizarre condition where the lock has expired upon acquisition
- */
-async fn acquire_lock(
-    key: &str,
-    lock_client: &dynamodb_lock::DynamoDbLockClient,
-) -> dynamodb_lock::LockItem {
-    debug!("Attempting to retrieve a lock for {key:?}");
-    let lock = lock_client
-        .acquire_lock(Some(key))
-        .await
-        .expect("Failed to acquire a lock");
-    debug!("Lock acquired");
-
-    if lock.acquired_expired_lock {
-        error!("Somehow oxbow acquired an already expired lock, failing");
-        panic!("Failing in hopes of acquiring a fresh lock");
-    }
-    lock
-}
-
-/**
- * Helper function to release a given [dynamodb_lock::LockItem].
- *
- * Will return true if the lock was successfully released.
- */
-async fn release_lock(
-    lock: dynamodb_lock::LockItem,
-    lock_client: &dynamodb_lock::DynamoDbLockClient,
-) -> bool {
-    if let Err(e) = lock_client.release_lock(&lock).await {
-        error!("Failing to properly release the lock {:?}: {:?}", lock, e);
-        return false;
-    }
-    true
 }
 
 #[cfg(test)]

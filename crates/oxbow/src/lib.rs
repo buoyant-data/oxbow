@@ -16,6 +16,8 @@ use url::Url;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub mod lock;
+
 /**
  * convert is the main function to be called by the CLI or other "one shot" executors which just
  * need to take a given location and convert it all at once

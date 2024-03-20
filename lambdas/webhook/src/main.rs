@@ -20,7 +20,7 @@ async fn append_values(mut table: DeltaTable, jsonl: &str) -> Result<DeltaTable,
     let mut writer = RecordBatchWriter::for_table(&table)?;
 
     while let Some(Ok(batch)) = reader.next() {
-        println!("batch: {batch:?}");
+        debug!("Receiving : {batch:?}");
         writer.write(batch).await?;
     }
 
@@ -48,9 +48,16 @@ async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
             let body = event.body();
             match body {
                 lambda_http::Body::Text(buf) => {
-                    debug!("Deserializing body text into a Value");
+                    debug!("Deserializing body text and appending to {table_uri}");
                     let table = oxbow::lock::open_table(&table_uri).await?;
-                    append_values(table, &buf).await?;
+                    debug!("{}", &buf);
+                    match append_values(table, &buf).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("Failed to append the values to configured Delta table: {e:?}");
+                            return Err(e);
+                        }
+                    }
                 }
                 others => {
                     warn!("Unsupported body payload type: {others:?}");
@@ -66,7 +73,7 @@ async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
             warn!("Received method I cannot support: {others:?}");
             Response::builder()
                 .status(400)
-                .body("I ony speak POST".into())
+                .body("I only speak POST".into())
                 .map_err(Box::new)?
         }
     };

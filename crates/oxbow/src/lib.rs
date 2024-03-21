@@ -860,7 +860,7 @@ mod tests {
         );
         assert_eq!(0, table.version(), "Unexpected version");
 
-        remove_from_table(&vec![], &mut table)
+        remove_from_table(&[], &mut table)
             .await
             .expect("Failed to append files");
         table.load().await.expect("Failed to reload the table");

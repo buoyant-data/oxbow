@@ -52,10 +52,10 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         let table_mods = by_table
             .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
-        let lock_client = oxbow::lock::client_for(&table_name);
+        let lock_client = oxbow::lock::client_for(table_name);
         let lock = oxbow::lock::acquire(table_name, &lock_client).await;
 
-        match oxbow::lock::open_table(&table_name).await {
+        match oxbow::lock::open_table(table_name).await {
             Ok(mut table) => {
                 info!("Opened table to append: {:?}", table);
 
@@ -117,7 +117,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                 // create the table with our objects
                 info!("Creating new Delta table at: {location}");
                 let table =
-                    oxbow::convert(table_name, Some(oxbow::lock::storage_options(&table_name)))
+                    oxbow::convert(table_name, Some(oxbow::lock::storage_options(table_name)))
                         .await;
                 info!("Created table at: {location}");
 

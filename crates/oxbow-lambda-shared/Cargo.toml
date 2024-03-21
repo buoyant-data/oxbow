@@ -10,10 +10,10 @@ license-file.workspace = true
 
 [dependencies]
 aws_lambda_events = { workspace = true }
+chrono = { workspace = true }
 deltalake = { workspace = true }
+tracing = { workspace = true }
 
-chrono = "0.4.31"
 serde = { version = "=1", features = ["rc"] }
 serde_json = "=1"
-tracing = { workspace = true }
 urlencoding = "=2"

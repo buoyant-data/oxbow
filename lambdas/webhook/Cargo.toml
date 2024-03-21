@@ -10,6 +10,7 @@ lambda_http = "0.10.0"
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
+chrono = { workspace = true }
 deltalake = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

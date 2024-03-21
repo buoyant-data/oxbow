@@ -1,7 +1,9 @@
-use deltalake::arrow::datatypes::Schema as ArrowSchema;
 ///
 /// The webhook lambda can receive JSONL formatted events and append them to a pre-configured Delta
 /// table
+use chrono::prelude::*;
+use deltalake::arrow::array::RecordBatch;
+use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::json::reader::ReaderBuilder;
 use deltalake::writer::{record_batch::RecordBatchWriter, DeltaWriter};
 use deltalake::DeltaTable;
@@ -9,6 +11,7 @@ use lambda_http::{run, service_fn, tracing, Body, Error, Request, Response};
 use tracing::log::*;
 
 use std::io::Cursor;
+use std::sync::Arc;
 
 /// Function responsible for opening the table and actually appending values to it
 async fn append_values(mut table: DeltaTable, jsonl: &str) -> Result<DeltaTable, Error> {
@@ -20,7 +23,8 @@ async fn append_values(mut table: DeltaTable, jsonl: &str) -> Result<DeltaTable,
     let mut writer = RecordBatchWriter::for_table(&table)?;
 
     while let Some(Ok(batch)) = reader.next() {
-        debug!("Receiving : {batch:?}");
+        let batch = augment_with_ds(&batch);
+        debug!("Augmented: {batch:?}");
         writer.write(batch).await?;
     }
 
@@ -51,7 +55,7 @@ async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
                     debug!("Deserializing body text and appending to {table_uri}");
                     let table = oxbow::lock::open_table(&table_uri).await?;
                     debug!("{}", &buf);
-                    match append_values(table, &buf).await {
+                    match append_values(table, buf).await {
                         Ok(_) => {}
                         Err(e) => {
                             error!("Failed to append the values to configured Delta table: {e:?}");
@@ -95,16 +99,49 @@ async fn main() -> Result<(), Error> {
     run(service_fn(function_handler)).await
 }
 
+///
+/// Augment the given [RecordBatch] with another column that represents `ds`, treated
+/// as the date-stampe, e.g. `2024-01-01`.
+///
+fn augment_with_ds(batch: &RecordBatch) -> RecordBatch {
+    use deltalake::arrow::array::{Array, StringArray};
+
+    // If the schema doesn't have a `ds` then don't try to add one
+    if batch.column_by_name("ds").is_none() {
+        info!("The schema of the destination table doesn't have `ds` so not adding the value");
+        return batch.clone();
+    }
+
+    let mut ds = vec![];
+    let now = Utc::now();
+    let datestamp = now.format("%Y-%m-%d").to_string();
+
+    for _index in 0..batch.num_rows() {
+        ds.push(datestamp.clone());
+    }
+
+    let mut columns: Vec<Arc<dyn Array>> = vec![];
+
+    for field in &batch.schema().fields {
+        if field.name() != "ds" {
+            if let Some(column) = batch.column_by_name(field.name()) {
+                columns.push(column.clone());
+            }
+        } else {
+            columns.push(Arc::new(StringArray::from(ds.clone())));
+        }
+    }
+
+    RecordBatch::try_new(batch.schema(), columns).expect("Failed to transpose `ds` onto batch")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use deltalake::*;
 
-    #[tokio::test]
-    async fn test_append_values() -> deltalake::DeltaResult<()> {
-        use deltalake::schema::SchemaDataType;
-        use deltalake::*;
-
-        let table = DeltaOps::try_from_uri("memory://")
+    async fn setup_test_table() -> DeltaResult<DeltaTable> {
+        DeltaOps::try_from_uri("memory://")
             .await?
             .create()
             .with_table_name("test")
@@ -114,13 +151,19 @@ mod tests {
                 true,
                 None,
             )
+            .with_column("ds", SchemaDataType::primitive("string".into()), true, None)
             .with_column(
                 "name",
                 SchemaDataType::primitive("string".into()),
                 true,
                 None,
             )
-            .await?;
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_append_values() -> DeltaResult<()> {
+        let table = setup_test_table().await?;
 
         let jsonl = r#"
             {"id" : 0, "name" : "Ben"}
@@ -131,6 +174,27 @@ mod tests {
             .expect("Failed to do nothing");
 
         assert_eq!(table.version(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_augment_with_ds() -> DeltaResult<()> {
+        let table = setup_test_table().await?;
+        let jsonl = r#"
+            {"id" : 0, "name" : "Ben"}
+            {"id" : 1, "name" : "Chris"}
+        "#;
+
+        let cursor = Cursor::new(jsonl);
+        let schema = table.get_schema()?;
+        let schema = ArrowSchema::try_from(schema)?;
+        let mut reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
+
+        while let Some(Ok(batch)) = reader.next() {
+            let batch = augment_with_ds(&batch);
+            println!("{:?}", batch);
+            assert_ne!(None, batch.column_by_name("ds"));
+        }
         Ok(())
     }
 }

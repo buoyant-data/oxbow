@@ -28,7 +28,20 @@ async fn append_values(mut table: DeltaTable, jsonl: &str) -> Result<DeltaTable,
         writer.write(batch).await?;
     }
 
-    writer.flush_and_commit(&mut table).await?;
+    let version = writer.flush_and_commit(&mut table).await?;
+    info!("Successfully flushed v{version} to Delta table");
+    // Reload the table to make sure we have the latest version to checkpoint
+    let _ = table.load().await;
+    if table.version() == version {
+        match deltalake::checkpoints::create_checkpoint(&table).await {
+            Ok(_) => info!("Successfully created checkpoint"),
+            Err(e) => {
+                error!("Failed to create checkpoint for {table:?}: {e:?}")
+            }
+        }
+    } else {
+        error!("The table was reloaded to create a checkpoint but a new version already exists!");
+    }
 
     Ok(table)
 }

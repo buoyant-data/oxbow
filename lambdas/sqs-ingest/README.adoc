@@ -1,0 +1,48 @@
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:toc: macro
+
+= SQS Ingest
+
+The `sqs-ingest` is the AWS SQS equivalent of
+link:https://github.com/delta-io/kafka-delta-ingest[kafka-delta-ingest] insofar
+that it allows the ingestion of JSON data from SQS and translatest each record
+into a row appended onto a link:https://delta.io[Delta Lake] table.
+
+toc::[]
+
+
+for simplicity's sake this Lambda is intended to only work with a single Delta
+table. For ingestion to multiple Delta tables, deploy different instances of
+this Lambda triggered by different SQS queues.
+
+image::diagram.png[Flow]
+
+== Environment Variables
+
+|===
+
+| Name | Default Value | Notes
+
+| `RUST_LOG`
+| `error`
+| Set the log level, e.g. `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `oxbow=debug`
+
+| `DELTA_TABLE_URI`
+|
+| Set to the `s3://` URL of the Delta table which should be appended
+
+| `AWS_S3_LOCKING_PROVIDER`
+|
+| Set to `dynamodb` to enable safe concurrent writes to the table
+
+| `DYNAMO_LOCK_TABLE_NAME`
+|
+| Set to the DynamoDB table used for locking, required for safe concurrent writes.
+
+|===

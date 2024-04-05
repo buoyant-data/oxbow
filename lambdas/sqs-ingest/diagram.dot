@@ -1,0 +1,18 @@
+digraph {
+  label="SQS Ingest";
+  labelloc=t;
+  node[shape=rect];
+
+  app[label="Application", style=dashed];
+
+  {
+    rank=same;
+    rankdir=LR;
+    sqs[shape=cds, label="SQS queue"];
+    lambda[label="sqs-ingest Lambda"];
+    delta[shape=cylinder, label="Delta table"];
+  }
+  app -> sqs -> lambda -> delta;
+}
+
+// vim: ft=dot sw=2 ts=2 et

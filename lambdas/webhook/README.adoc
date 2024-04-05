@@ -35,5 +35,12 @@ toc::[]
 | _null_
 |  **Required** the S3 location of the Delta table which should be appended to.
 
+| `AWS_S3_LOCKING_PROVIDER`
+|
+| Set to `dynamodb` to enable safe concurrent writes to the table
+
+| `DYNAMO_LOCK_TABLE_NAME`
+|
+| Set to the DynamoDB table used for locking, required for safe concurrent writes.
 
 |===

@@ -1,6 +1,6 @@
-/*
- * The lib module contains the business logic of oxbow, regardless of the interface implementation
- */
+///
+/// The lib module contains the business logic of oxbow, regardless of the interface implementation
+///
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub mod lock;
+pub mod write;
 
 /**
  * convert is the main function to be called by the CLI or other "one shot" executors which just
@@ -333,7 +334,7 @@ pub fn remove_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
  * This can be useful to find the smallest possible parquet file to load from the set in order to
  * discern schema information
  */
-fn find_smallest_file(files: &Vec<ObjectMeta>) -> Option<&ObjectMeta> {
+fn find_smallest_file(files: &[ObjectMeta]) -> Option<&ObjectMeta> {
     if files.is_empty() {
         return None;
     }

@@ -6,6 +6,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+chrono = { workpace = true }
 deltalake = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }

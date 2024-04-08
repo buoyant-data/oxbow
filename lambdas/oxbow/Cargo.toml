@@ -19,7 +19,7 @@ oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 dynamodb_lock = "0.6.1"
-lambda_runtime = { version = "0.8" }
+lambda_runtime = { version = "0.11" }
 rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}
 rusoto_credential = { version = "0.47"}
 rusoto_s3 = { version = "0.47", default-features = false, features = ["rustls"] }

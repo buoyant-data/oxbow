@@ -116,3 +116,13 @@ jobs:
           asset_path: ./target/lambda/webhook/bootstrap.zip
           asset_name: webhook-lambda-bootstrap-${{ github.ref_name }}.zip
           asset_content_type: application/zip
+
+      - name: Upload sqs-ingest lambda
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/lambda/sqs-ingest/bootstrap.zip
+          asset_name: sqs-ingest-lambda-bootstrap-${{ github.ref_name }}.zip
+          asset_content_type: application/zip

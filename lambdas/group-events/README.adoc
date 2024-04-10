@@ -14,3 +14,21 @@ its trigger, into FIFO messages with a specific group identifier for an SQS
 FIFO destination. By grouping on the prefix (e.g.
 `databases/external/dw_sync/`) the `oxbow-lambda` can then be triggered from
 the SQS FIFO queue where concurrent function invocations will have a far lower likelihood for lock contention.
+
+
+== Environment Variables
+
+|===
+
+| Name | Default Value | Notes
+
+| `RUST_LOG`
+| `error`
+| Set the log level, e.g. `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `oxbow=debug`
+
+| `UNWRAP_SNS_ENVELOPE`
+| _null_
+| Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
+
+
+|===

@@ -27,5 +27,8 @@ toc::[]
 | _null_
 | Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
 
+| `SCHEMA_EVOLUTION`
+| _null_
+| When set to any value this enables schema evolution by the Oxbow Lambda which will cause it to retrieve metadata for the last `.parquet` it reteives in an event notification and add new columns if necessary
 
 |===

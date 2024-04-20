@@ -8,14 +8,14 @@ use chrono::prelude::*;
 use deltalake::{DeltaResult, ObjectMeta, Path};
 use tracing::log::*;
 
+use oxbow::TableMods;
 use std::collections::HashMap;
 
-/**
- * Return wholly new [`S3EventRecord`] objects with their the [`S3Object`] `url_decoded_key`
- * properly filled in
- *
- * For whatever reason `aws_lambda_events` does not properly handle this
- */
+///
+/// Return wholly new [`S3EventRecord`] objects with their the [`S3Object`] `url_decoded_key`
+/// properly filled in
+///
+/// For whatever reason `aws_lambda_events` does not properly handle this
 pub fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRecord> {
     use urlencoding::decode;
 
@@ -37,22 +37,12 @@ pub fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRe
         .collect()
 }
 
-/// Struct to keep track of the table modifications needing to be made based on
-/// [S3EventRecord] objects .
-#[derive(Debug, Clone, Default)]
-pub struct TableMods {
-    pub adds: Vec<ObjectMeta>,
-    pub removes: Vec<ObjectMeta>,
-}
-
-/**
- * Group the objects from the notification based on the delta tables they should be added to.
- *
- * There's a possibility that an S3 bucket notification will have objects mixed in which should be
- * destined for different delta tables. Rather than re-opening/loading the table for each object as
- * we iterate the records, we can group them based on the delta table and then create the
- * appropriate transactions
- */
+/// Group the objects from the notification based on the delta tables they should be added to.
+///
+/// There's a possibility that an S3 bucket notification will have objects mixed in which should be
+/// destined for different delta tables. Rather than re-opening/loading the table for each object as
+/// we iterate the records, we can group them based on the delta table and then create the
+/// appropriate transactions
 pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, TableMods> {
     let mut mods = HashMap::new();
 
@@ -81,13 +71,11 @@ pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, TableMods>
     mods
 }
 
-/**
- * Infer the log path from the given object path.
- *
- * The location of `_delta_log/` can technically be _anywhere_ but for convention's
- * sake oxbow will attempt to put the `_delta_log/` some place predictable to ensure that
- * `add` actions in the log can use relative file paths for newly added objects
- */
+/// Infer the log path from the given object path.
+///
+/// The location of `_delta_log/` can technically be _anywhere_ but for convention's
+/// sake oxbow will attempt to put the `_delta_log/` some place predictable to ensure that
+/// `add` actions in the log can use relative file paths for newly added objects
 pub fn infer_log_path_from(path: &str) -> String {
     use std::path::{Component, Path};
 
@@ -189,12 +177,11 @@ pub fn s3_from_sns(event: SqsEvent) -> DeltaResult<Vec<S3EventRecord>> {
     Ok(records)
 }
 
-/**
- * Convert an [`S3Object`] into an [`ObjectMeta`] for use in the creation of Delta transactions
- *
- * This is a _lossy_ conversion since the two structs do not share the same set of information,
- * therefore this conversion is really only taking the path of the object and the size
- */
+///
+/// Convert an [`S3Object`] into an [`ObjectMeta`] for use in the creation of Delta transactions
+///
+/// This is a _lossy_ conversion since the two structs do not share the same set of information,
+/// therefore this conversion is really only taking the path of the object and the size
 fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMeta {
     let location = s3object.url_decoded_key.clone().unwrap_or("".to_string());
 

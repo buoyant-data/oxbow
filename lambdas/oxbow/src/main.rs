@@ -1,7 +1,8 @@
-/*
- * The lambda crate contains the Lambda specific implementation of oxbow.
- */
-
+///
+/// The oxbow lambda crate contains the Lambda-specific handling of the Oxbow lambda
+///
+/// While most of the key logic does exist in the oxbow and oxbow-lambda-shared crates, this
+/// function glues that into the Lambda runtime
 use aws_lambda_events::sqs::SqsEvent;
 use deltalake::DeltaTableError;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
@@ -20,8 +21,8 @@ async fn main() -> Result<(), anyhow::Error> {
         // disabling time is handy because CloudWatch will add the ingestion time.
         .without_time()
         .init();
-    info!("Starting oxbow");
     info!("Starting the Lambda runtime");
+    info!("Starting oxbow");
     let func = service_fn(func);
     lambda_runtime::run(func)
         .await
@@ -31,6 +32,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     debug!("Receiving event: {:?}", event);
+    let can_evolve_schema: bool = std::env::var("SCHEMA_EVOLUTION").is_ok();
+    if can_evolve_schema {
+        info!("Schema evolution has been enabled based on the environment variable");
+    }
+
     let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
         Ok(_) => s3_from_sns(event.payload)?,
         Err(_) => s3_from_sqs(event.payload)?,
@@ -59,7 +65,10 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             Ok(mut table) => {
                 info!("Opened table to append: {:?}", table);
 
-                match oxbow::append_to_table(table_mods.adds.as_slice(), &mut table).await {
+                let actions = oxbow::actions_for(table_mods, &table)
+                    .expect("Failed to generate actions for the table modifications");
+
+                match oxbow::commit_to_table(&actions, &mut table).await {
                     Ok(version) => {
                         info!(
                             "Successfully appended version {} to table at {}",
@@ -86,30 +95,6 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                         error!("Failed to append to the table {}: {:?}", location, err);
                         let _ = oxbow::lock::release(lock, &lock_client).await;
                         return Err(Box::new(err));
-                    }
-                }
-
-                if !table_mods.removes.is_empty() {
-                    info!(
-                        "{} Remove actions are expected in this operation",
-                        table_mods.removes.len()
-                    );
-                    match oxbow::remove_from_table(table_mods.removes.as_slice(), &mut table).await
-                    {
-                        Ok(version) => {
-                            info!(
-                                "Successfully created version {} with remove actions",
-                                version
-                            );
-                        }
-                        Err(err) => {
-                            error!(
-                                "Failed to create removes on the table {}: {:?}",
-                                location, err
-                            );
-                            let _ = oxbow::lock::release(lock, &lock_client).await;
-                            return Err(Box::new(err));
-                        }
                     }
                 }
             }

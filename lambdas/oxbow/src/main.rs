@@ -65,7 +65,8 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             Ok(mut table) => {
                 info!("Opened table to append: {:?}", table);
 
-                let actions = oxbow::actions_for(table_mods, &table, can_evolve_schema).await
+                let actions = oxbow::actions_for(table_mods, &table, can_evolve_schema)
+                    .await
                     .expect("Failed to generate actions for the table modifications");
 
                 match oxbow::commit_to_table(&actions, &mut table).await {

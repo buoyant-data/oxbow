@@ -1,5 +1,5 @@
 [package]
-name = "glue-sync"
+name = "glue-create"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
@@ -8,7 +8,6 @@ homepage.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true }
-deltalake = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -18,6 +17,7 @@ url = { workspace = true }
 
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
-aws-sdk-glue = "1.26.0"
-aws-config = { version = "1.2.0", features = ["behavior-version-latest"] }
+aws-sdk-athena = "=1"
+aws-sdk-glue = "=1"
+aws-config = { version = "=1", features = ["behavior-version-latest"] }
 lambda_runtime = { version = "0.11" }

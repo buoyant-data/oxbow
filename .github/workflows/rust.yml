@@ -26,8 +26,7 @@ jobs:
                 repo: cargo-lambda/cargo-lambda
                 platform: linux # Other valid options: 'windows' or 'darwin'
                 arch: x86_64 # Other valid options for linux: 'aarch64'
-            # Add your build steps below
             - name: Build
-              run: cargo lambda build
+              run: ./ci/build.sh
             - name: Run tests
-              run: cargo test --verbose
+              run: ./ci/test.sh

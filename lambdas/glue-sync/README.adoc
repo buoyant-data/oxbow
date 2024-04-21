@@ -1,0 +1,36 @@
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:toc: macro
+
+= Glue Sync
+
+The `glue-sync` Lambda helps keep an AWS Glue Datalog in sync with the schema
+of the Delta tables for which it receives S3 Event Notifications. Like most
+other Lambdas in the oxbow ecosystem it is intended to be triggered with S3
+Event Notifications and when a table schema is changed it will load the Delta
+table and compare the schema to a Glue Data Catalog entry,. modifying where
+necessary.
+
+toc::[]
+
+
+== Environment Variables
+
+|===
+
+| Name | Default Value | Notes
+
+| `RUST_LOG`
+| `error`
+| Set the log level, e.g. `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `oxbow=debug`
+
+| `UNWRAP_SNS_ENVELOPE`
+| _null_
+| Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
+
+|===

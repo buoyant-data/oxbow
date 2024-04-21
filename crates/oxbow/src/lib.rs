@@ -228,7 +228,7 @@ pub async fn actions_for(
     let adds = add_actions_for(&new_files);
     let removes = remove_actions_for(&mods.removes);
     let metadata = match evolve_schema {
-        true => match metadata_actions_for(&new_files, &table).await {
+        true => match metadata_actions_for(&new_files, table).await {
             Ok(axns) => axns,
             Err(err) => {
                 error!("Attempted schema evolution but received an unhandled error!: {err:?}");
@@ -424,7 +424,7 @@ fn coerce_field(
         },
         _ => {}
     };
-    return field.clone();
+    field.clone()
 }
 
 #[cfg(test)]
@@ -842,7 +842,7 @@ mod tests {
 
         // Creating the table with one of the discovered files, so the remaining three should be
         // added later
-        let table = create_table_with(&vec![files[0].clone()], store.clone())
+        let table = create_table_with(&[files[0].clone()], store.clone())
             .await
             .expect("Failed to create table");
 
@@ -950,7 +950,7 @@ mod tests {
         assert_eq!(files.len(), 4, "No files discovered");
         // Creating the table with one of the discovered files, so the remaining three should be
         // added later
-        let mut table = create_table_with(&vec![files[0].clone()], store.clone())
+        let mut table = create_table_with(&[files[0].clone()], store.clone())
             .await
             .expect("Failed to create table");
         let initial_version = table.version();

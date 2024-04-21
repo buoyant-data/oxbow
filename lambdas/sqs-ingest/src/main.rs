@@ -78,7 +78,7 @@ mod tests {
         let buf = r#"{
             "body" : "{\"key\" : \"value\"}"
         }"#;
-        let message: SqsMessage = serde_json::from_str(&buf).expect("Failed to deserialize");
+        let message: SqsMessage = serde_json::from_str(buf).expect("Failed to deserialize");
         let messages = vec![
             message.clone(),
             message.clone(),

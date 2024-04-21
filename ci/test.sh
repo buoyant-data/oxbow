@@ -1,3 +1,3 @@
 #!/bin/sh 
 
-cargo test --verbose
+exec cargo test --verbose

@@ -12,16 +12,16 @@ check: ## Ensure that the crate meets the basic formatting and structure
 	(cd deployment && terraform fmt -check)
 
 build: ## Build the crate with each set of features
-	cargo build
+	./ci/build.sh
 
 build-release: check test ## Build the release versions of Lambdas
-	cargo lambda build --release --output-format zip
+	./ci/build-release.sh
 
 deploy: check ## Deploy the examples
 	(cd deployment && terraform apply)
 
 test: ## Run the crate's tests with each set of features
-	cargo test
+	./ci/test.sh
 
 clean: ## Clean up resources from build
 	cargo clean

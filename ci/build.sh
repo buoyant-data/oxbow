@@ -1,3 +1,7 @@
 #!/bin/sh 
 
-cargo lambda build
+set -xe
+
+cargo fmt --check
+
+exec cargo build

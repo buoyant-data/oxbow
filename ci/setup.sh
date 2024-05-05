@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+if [ -f "${HOME}/.cargo/env" ]; then
+        source "${HOME}/.cargo/env"
+fi;
+
 which cargo-lambda
 
 if [ $? -ne 0 ]; then

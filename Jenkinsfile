@@ -47,7 +47,8 @@ pipeline {
           stage('Release') {
             steps {
               sh './ci/build-release.sh'
-              archiveArtifacts artifacts: 'target/lambda/**/*.zip', fingerprint: true, onlyIfSuccessful: true
+              sh './ci/rename-artifacts.sh'
+              archiveArtifacts artifacts: 'target/artifacts/*.zip', fingerprint: true, onlyIfSuccessful: true
             }
           }
         }

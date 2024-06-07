@@ -10,26 +10,29 @@ use std::sync::Arc;
 use tracing::log::*;
 
 /// Function responsible for appending values to an opened [DeltaTable]
-pub async fn append_values(mut table: DeltaTable, jsonl: &str) -> DeltaResult<DeltaTable> {
-    let cursor = Cursor::new(jsonl);
+pub async fn append_values(mut table: DeltaTable, values: &[String]) -> DeltaResult<DeltaTable> {
     let schema = table.get_schema()?;
     debug!("Attempting to append values with schema: {schema:?}");
     let schema = ArrowSchema::try_from(schema)?;
-    let reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
 
     let mut writer = RecordBatchWriter::for_table(&table)?;
     let mut written = false;
 
-    for res in reader {
-        match res {
-            Ok(batch) => {
-                let batch = augment_with_ds(&batch);
-                debug!("Augmented: {batch:?}");
-                writer.write(batch).await?;
-                written = true;
-            }
-            Err(e) => {
-                error!("Failed to write a data file: {e:?}");
+    for value in values {
+        let cursor = Cursor::new(value);
+        let reader = ReaderBuilder::new(schema.clone().into()).build(cursor).unwrap();
+
+        for res in reader {
+            match res {
+                Ok(batch) => {
+                    let batch = augment_with_ds(&batch);
+                    debug!("Augmented: {batch:?}");
+                    writer.write(batch).await?;
+                    written = true;
+                }
+                Err(e) => {
+                    error!("Failed to write a data file: {e:?}");
+                }
             }
         }
     }
@@ -56,8 +59,13 @@ pub async fn append_values(mut table: DeltaTable, jsonl: &str) -> DeltaResult<De
     } else {
         warn!("Failed to write any data files! Cowardly avoiding a Delta commit");
     }
-
     Ok(table)
+}
+
+/// Function responsible for appending values to an opened [DeltaTable]
+pub async fn append_jsonl(table: DeltaTable, jsonl: &str) -> DeltaResult<DeltaTable> {
+    let values: Vec<String> = jsonl.split("\n").map(|m| m.to_string()).collect();
+    append_values(table, values.as_slice()).await
 }
 
 ///
@@ -123,14 +131,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_append_values() -> DeltaResult<()> {
+    async fn test_append_jsonl() -> DeltaResult<()> {
         let table = setup_test_table().await?;
 
         let jsonl = r#"
             {"id" : 0, "name" : "Ben"}
             {"id" : 1, "name" : "Chris"}
         "#;
-        let table = append_values(table, jsonl)
+        let table = append_jsonl(table, jsonl)
             .await
             .expect("Failed to do nothing");
 
@@ -156,6 +164,22 @@ mod tests {
             println!("{:?}", batch);
             assert_ne!(None, batch.column_by_name("ds"));
         }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_append_values() -> DeltaResult<()> {
+        let table = setup_test_table().await?;
+
+        let values = vec![
+            r#"{"id" : 0, "name" : "Ben"}"#.into(),
+            r#"{"id" : 1, "name" : "Chris"}"#.into(),
+        ];
+        let table = append_values(table, values.as_slice())
+            .await
+            .expect("Failed to do nothing");
+
+        assert_eq!(table.version(), 1);
         Ok(())
     }
 }

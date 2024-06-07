@@ -15,12 +15,12 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
     debug!("payload received: {:?}", event.payload.records);
 
-    let jsonl = extract_json_from_records(&event.payload.records);
-    debug!("jsonl generated: {jsonl}");
+    let values = extract_json_from_records(&event.payload.records);
+    debug!("JSON pulled out: {values:?}");
 
-    if !jsonl.is_empty() {
+    if !values.is_empty() {
         let table = oxbow::lock::open_table(&table_uri).await?;
-        match append_values(table, &jsonl).await {
+        match append_values(table, values.as_slice()).await {
             Ok(table) => {
                 debug!("Appended values to: {table:?}");
             }
@@ -62,13 +62,12 @@ async fn main() -> Result<(), Error> {
 
 /// Convert the `body` payloads from [SqsMessage] entities into JSONL
 /// which can be passed into the [oxbow::write::append_values] function
-fn extract_json_from_records(records: &[SqsMessage]) -> String {
+fn extract_json_from_records(records: &[SqsMessage]) -> Vec<String> {
     records
         .iter()
         .filter(|m| m.body.is_some())
         .map(|m| m.body.as_ref().unwrap().clone())
         .collect::<Vec<String>>()
-        .join("\n")
 }
 
 #[cfg(test)]
@@ -88,11 +87,14 @@ mod tests {
             SqsMessage::default(),
         ];
 
-        let jsonl = extract_json_from_records(&messages);
+        let values = extract_json_from_records(&messages);
+        assert_eq!(values.len(), 3);
 
-        let expected = r#"{"key" : "value"}
-{"key" : "value"}
-{"key" : "value"}"#;
-        assert_eq!(expected, jsonl);
+        let expected: Vec<String> = vec![
+            r#"{"key" : "value"}"#.into(),
+            r#"{"key" : "value"}"#.into(),
+            r#"{"key" : "value"}"#.into(),
+        ];
+        assert_eq!(values, expected);
     }
 }

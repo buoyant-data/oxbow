@@ -20,7 +20,9 @@ pub async fn append_values(mut table: DeltaTable, values: &[String]) -> DeltaRes
 
     for value in values {
         let cursor = Cursor::new(value);
-        let reader = ReaderBuilder::new(schema.clone().into()).build(cursor).unwrap();
+        let reader = ReaderBuilder::new(schema.clone().into())
+            .build(cursor)
+            .unwrap();
 
         for res in reader {
             match res {

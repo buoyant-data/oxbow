@@ -28,7 +28,7 @@ async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
                     debug!("Deserializing body text and appending to {table_uri}");
                     let table = oxbow::lock::open_table(&table_uri).await?;
                     debug!("{}", &buf);
-                    match append_values(table, buf).await {
+                    match append_jsonl(table, buf).await {
                         Ok(_) => {}
                         Err(e) => {
                             error!("Failed to append the values to configured Delta table: {e:?}");

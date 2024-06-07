@@ -27,10 +27,10 @@ pub async fn append_values(mut table: DeltaTable, jsonl: &str) -> DeltaResult<De
                 debug!("Augmented: {batch:?}");
                 writer.write(batch).await?;
                 written = true;
-            },
+            }
             Err(e) => {
                 error!("Failed to write a data file: {e:?}");
-            },
+            }
         }
     }
 

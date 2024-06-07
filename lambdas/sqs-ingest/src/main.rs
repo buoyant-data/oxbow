@@ -21,7 +21,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     if !jsonl.is_empty() {
         let table = oxbow::lock::open_table(&table_uri).await?;
         match append_values(table, &jsonl).await {
-            Ok(_) => {}
+            Ok(table) => {
+                debug!("Appended values to: {table:?}");
+            }
             Err(e) => {
                 error!("Failed to append the values to configured Delta table: {e:?}");
                 return Err(Box::new(e));

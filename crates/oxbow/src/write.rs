@@ -13,34 +13,48 @@ use tracing::log::*;
 pub async fn append_values(mut table: DeltaTable, jsonl: &str) -> DeltaResult<DeltaTable> {
     let cursor = Cursor::new(jsonl);
     let schema = table.get_schema()?;
+    debug!("Attempting to append values with schema: {schema:?}");
     let schema = ArrowSchema::try_from(schema)?;
-    let mut reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
+    let reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
 
     let mut writer = RecordBatchWriter::for_table(&table)?;
+    let mut written = false;
 
-    while let Some(Ok(batch)) = reader.next() {
-        let batch = augment_with_ds(&batch);
-        debug!("Augmented: {batch:?}");
-        writer.write(batch).await?;
+    for res in reader {
+        match res {
+            Ok(batch) => {
+                let batch = augment_with_ds(&batch);
+                debug!("Augmented: {batch:?}");
+                writer.write(batch).await?;
+                written = true;
+            },
+            Err(e) => {
+                error!("Failed to write a data file: {e:?}");
+            },
+        }
     }
 
-    let version = writer.flush_and_commit(&mut table).await?;
-    info!("Successfully flushed v{version} to Delta table");
-    if version % 10 == 0 {
-        // Reload the table to make sure we have the latest version to checkpoint
-        let _ = table.load().await;
-        if table.version() == version {
-            match deltalake::checkpoints::create_checkpoint(&table).await {
-                Ok(_) => info!("Successfully created checkpoint"),
-                Err(e) => {
-                    error!("Failed to create checkpoint for {table:?}: {e:?}")
+    if written {
+        let version = writer.flush_and_commit(&mut table).await?;
+        info!("Successfully flushed v{version} to Delta table");
+        if version % 10 == 0 {
+            // Reload the table to make sure we have the latest version to checkpoint
+            let _ = table.load().await;
+            if table.version() == version {
+                match deltalake::checkpoints::create_checkpoint(&table).await {
+                    Ok(_) => info!("Successfully created checkpoint"),
+                    Err(e) => {
+                        error!("Failed to create checkpoint for {table:?}: {e:?}")
+                    }
                 }
+            } else {
+                error!(
+                    "The table was reloaded to create a checkpoint but a new version already exists!"
+                );
             }
-        } else {
-            error!(
-                "The table was reloaded to create a checkpoint but a new version already exists!"
-            );
         }
+    } else {
+        warn!("Failed to write any data files! Cowardly avoiding a Delta commit");
     }
 
     Ok(table)

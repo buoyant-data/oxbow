@@ -78,8 +78,6 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
 
                         if version % 10 == 0 {
                             info!("Creating a checkpoint for {}", location);
-                            debug!("Reloading the table state to get the latest version");
-                            let _ = table.load().await;
                             if table.version() == version {
                                 match deltalake::checkpoints::create_checkpoint(&table).await {
                                     Ok(_) => info!("Successfully created checkpoint"),

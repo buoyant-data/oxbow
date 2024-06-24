@@ -108,23 +108,26 @@ async fn process_record(
                     Err(_) => None,
                 };
 
-                let database = glue
+                let output = glue
                     .get_database()
-                    .name(glue_table.database)
-                    .catalog_id(catalog.unwrap())
+                    .name(&glue_table.database)
+                    .set_catalog_id(catalog.clone())
                     .send()
                     .await?;
 
-                match database {
+                match output.database() {
                     Some(db) => debug!("Database {db:?} already exists, nice."),
                     None => {
-                        debug!("Database {db:?} doesn't already exist. Creating...");
+                        debug!(
+                            "Database {} doesn't already exist. Creating...",
+                            glue_table.database
+                        );
                         let input = aws_sdk_glue::types::DatabaseInput::builder()
-                            .name(glue_table.database)
+                            .name(&glue_table.database)
                             .build()?;
 
                         glue.create_database()
-                            .catalog_id(catalog)
+                            .set_catalog_id(catalog.clone())
                             .database_input(input)
                             .send()
                             .await?;

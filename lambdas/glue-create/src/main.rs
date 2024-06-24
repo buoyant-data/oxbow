@@ -108,6 +108,29 @@ async fn process_record(
                     Err(_) => None,
                 };
 
+                let database = glue
+                    .get_database()
+                    .name(glue_table.database)
+                    .catalog_id(catalog.unwrap())
+                    .send()
+                    .await?;
+
+                match database {
+                    Some(db) => debug!("Database {db:?} already exists, nice."),
+                    None => {
+                        debug!("Database {db:?} doesn't already exist. Creating...");
+                        let input = aws_sdk_glue::types::DatabaseInput::builder()
+                            .name(glue_table.database)
+                            .build()?;
+
+                        glue.create_database()
+                            .catalog_id(catalog)
+                            .database_input(input)
+                            .send()
+                            .await?;
+                    }
+                }
+
                 let exec_context = aws_sdk_athena::types::QueryExecutionContext::builder()
                     .database(glue_table.database)
                     .set_catalog(catalog)

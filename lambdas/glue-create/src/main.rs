@@ -108,29 +108,24 @@ async fn process_record(
                     Err(_) => None,
                 };
 
-                let output = glue
-                    .get_database()
-                    .name(&glue_table.database)
-                    .set_catalog_id(catalog.clone())
-                    .send()
-                    .await?;
+                match glue.get_database().name(&glue_table.database).send().await {
+                    Ok(_) => debug!("Database {} already exists. Nice", glue_table.database),
+                    Err(error) => {
+                        let get_db_error = error.into_service_error();
+                        if get_db_error.is_entity_not_found_exception() {
+                            debug!(
+                                "Database {} doesn't exist. Creating...",
+                                glue_table.database
+                            );
+                            let input = aws_sdk_glue::types::DatabaseInput::builder()
+                                .name(&glue_table.database)
+                                .build()?;
 
-                match output.database() {
-                    Some(db) => debug!("Database {db:?} already exists, nice."),
-                    None => {
-                        debug!(
-                            "Database {} doesn't already exist. Creating...",
-                            glue_table.database
-                        );
-                        let input = aws_sdk_glue::types::DatabaseInput::builder()
-                            .name(&glue_table.database)
-                            .build()?;
-
-                        glue.create_database()
-                            .set_catalog_id(catalog.clone())
-                            .database_input(input)
-                            .send()
-                            .await?;
+                            glue.create_database().database_input(input).send().await?;
+                            debug!("Database {} created.", glue_table.database)
+                        } else {
+                            return Err(get_db_error.into());
+                        }
                     }
                 }
 

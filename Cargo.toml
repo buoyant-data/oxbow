@@ -7,7 +7,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.13.1"
+version = "1.0.0-rc1"
 edition = "2021"
 keywords = ["deltalake", "parquet", "lambda", "delta", "sqs"]
 homepage = "https://github.com/buoyant-data/oxbow"
@@ -19,7 +19,8 @@ license-file = "LICENSE.txt"
 anyhow = "=1"
 chrono = "0.4.31"
 aws_lambda_events = { version = "0.12.0", default-features = false, features = ["sns", "sqs", "s3"] }
-deltalake = { version = "0.16.5", features = ["s3", "json"]}
+# The datafusion feature is required to support invariants which may be in error, but is required as of currently released 0.18.2
+deltalake = { version = "0.18.0", features = ["s3", "json", "datafusion"]}
 tokio = { version = "=1", features = ["macros"] }
 regex = "=1"
 serde_json = "=1"
@@ -30,6 +31,7 @@ url = { version = "2.3", features = ["serde"] }
 [profile.release]
 panic = "abort"
 lto = true
+strip = true
 codegen-units = 1
 incremental = false
 opt-level = "z"

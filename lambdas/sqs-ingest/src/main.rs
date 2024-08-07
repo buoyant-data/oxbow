@@ -38,6 +38,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    deltalake::aws::register_handlers(None);
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         // disable printing the name of the module in every log line.

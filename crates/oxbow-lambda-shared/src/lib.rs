@@ -193,6 +193,7 @@ fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMe
         size: s3object.size.unwrap_or(0) as usize,
         last_modified: Utc::now(),
         e_tag: None,
+        version: None,
         location,
     }
 }
@@ -252,6 +253,7 @@ mod tests {
             last_modified: Utc::now(),
             size: 1024,
             e_tag: None,
+            version: None,
         };
 
         let result = into_object_meta(&s3object, None);
@@ -275,6 +277,7 @@ mod tests {
             last_modified: Utc::now(),
             e_tag: None,
             size: 1024,
+            version: None,
         };
 
         let result = into_object_meta(&s3object, Some("some/path/to/a/prefix"));
@@ -349,6 +352,7 @@ mod tests {
             last_modified: Utc::now(),
             size: 1024,
             e_tag: None,
+            version: None,
         };
 
         let result = into_object_meta(&s3object, Some("databases/deltatbl-partitioned"));

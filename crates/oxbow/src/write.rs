@@ -109,6 +109,7 @@ fn augment_with_ds(batch: &RecordBatch) -> RecordBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use deltalake::kernel::DataType;
     use deltalake::*;
 
     async fn setup_test_table() -> DeltaResult<DeltaTable> {
@@ -116,19 +117,9 @@ mod tests {
             .await?
             .create()
             .with_table_name("test")
-            .with_column(
-                "id",
-                SchemaDataType::primitive("integer".into()),
-                true,
-                None,
-            )
-            .with_column("ds", SchemaDataType::primitive("string".into()), true, None)
-            .with_column(
-                "name",
-                SchemaDataType::primitive("string".into()),
-                true,
-                None,
-            )
+            .with_column("id", DataType::INTEGER, true, None)
+            .with_column("ds", DataType::STRING, true, None)
+            .with_column("name", DataType::STRING, true, None)
             .await
     }
 

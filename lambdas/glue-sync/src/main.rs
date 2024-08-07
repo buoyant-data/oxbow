@@ -4,7 +4,8 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_sdk_glue::types::{Column, StorageDescriptor, Table, TableInput};
-use deltalake::{DeltaTable, SchemaDataType};
+use deltalake::kernel::{DataType, PrimitiveType};
+use deltalake::DeltaTable;
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use regex::Regex;
 use tracing::log::*;
@@ -26,6 +27,7 @@ struct GlueTable {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    deltalake::aws::register_handlers(None);
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         // disable printing the name of the module in every log line.
@@ -208,38 +210,42 @@ async fn fetch_table(database: &str, table: &str, client: &aws_sdk_glue::Client)
 /// Return the primitive type mapping for glue
 ///
 /// This is a separate function to accommodate reuse for arrays and structs
-fn glue_type_for(delta_type_name: &str) -> String {
+fn glue_type_for(delta_type_name: &PrimitiveType) -> String {
     match delta_type_name {
-        "integer" => "int".into(),
-        "long" => "bigint".into(),
-        "short" => "smallint".into(),
-        "byte" => "char".into(),
-        "date" => "string".into(),
-        _ => delta_type_name.into(),
+        PrimitiveType::Integer => "int".into(),
+        PrimitiveType::Long => "bigint".into(),
+        PrimitiveType::Short => "smallint".into(),
+        PrimitiveType::Byte => "char".into(),
+        PrimitiveType::Binary => "binary".into(),
+        PrimitiveType::Timestamp => "timestamp".into(),
+        PrimitiveType::Float => "double".into(),
+        PrimitiveType::Double => "double".into(),
+        PrimitiveType::Boolean => "boolean".into(),
+        PrimitiveType::String | PrimitiveType::Date => "string".into(),
+        _ => "string".into(),
     }
 }
 
-/// Convert a given [SchemaDataType] to the Glue type equivalent
+/// Convert a given [DataType] to the Glue type equivalent
 ///
 /// This calls itself recursively to handle both primitives and structs/maps
-fn to_glue_type(data_type: &SchemaDataType) -> String {
+fn to_glue_type(data_type: &DataType) -> String {
     match data_type {
-        SchemaDataType::primitive(name) => glue_type_for(name),
-        SchemaDataType::r#struct(s) => {
+        DataType::Primitive(name) => glue_type_for(name),
+        DataType::r#Struct(s) => {
             format!(
                 "struct<{}>",
-                s.get_fields()
-                    .iter()
-                    .map(|f| format!("{}:{}", f.get_name(), to_glue_type(f.get_type())))
+                s.fields()
+                    .map(|f| format!("{}:{}", f.name, to_glue_type(f.data_type())))
                     .collect::<Vec<String>>()
                     .join(",")
             )
         }
-        SchemaDataType::map(m) => {
+        DataType::Map(m) => {
             format!(
                 "map<{},{}>",
-                to_glue_type(m.get_key_type()),
-                to_glue_type(m.get_value_type())
+                to_glue_type(m.key_type()),
+                to_glue_type(m.value_type())
             )
         }
         _ => {
@@ -254,12 +260,11 @@ fn to_glue_type(data_type: &SchemaDataType) -> String {
 fn glue_columns_for(table: &DeltaTable) -> Vec<Column> {
     if let Ok(schema) = table.get_schema() {
         return schema
-            .get_fields()
-            .iter()
+            .fields()
             .map(|field| {
                 Column::builder()
-                    .name(field.get_name())
-                    .r#type(to_glue_type(field.get_type()))
+                    .name(field.name.clone())
+                    .r#type(to_glue_type(field.data_type()))
                     .build()
                     .expect("Failed to build column from Delta schema!")
             })

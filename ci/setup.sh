@@ -18,3 +18,6 @@ if [ $? -ne 0 ]; then
 fi;
 
 virtualenv venv
+
+source venv/bin/activate
+pip install ziglang

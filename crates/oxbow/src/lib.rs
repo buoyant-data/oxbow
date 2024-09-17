@@ -61,7 +61,7 @@ pub async fn convert(
                         .expect("Failed to parse the location as a file path")
                 }
             };
-            let store = logstore_for(location, storage_options.unwrap_or_default())?;
+            let store = logstore_for(location, storage_options.unwrap_or_default(), None)?;
             let files = discover_parquet_files(store.object_store().clone()).await?;
             debug!(
                 "Files identified for turning into a delta table: {:?}",
@@ -517,7 +517,7 @@ mod tests {
             let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
             (
                 dir,
-                logstore_for(url, HashMap::default()).expect("Failed to get store"),
+                logstore_for(url, HashMap::default(), None).expect("Failed to get store"),
             )
         }
     }
@@ -526,7 +526,7 @@ mod tests {
     async fn discover_parquet_files_empty_dir() {
         let dir = tempfile::tempdir().expect("Failed to create a temporary directory");
         let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::default()).expect("Failed to get log store");
+        let store = logstore_for(url, HashMap::default(), None).expect("Failed to get log store");
 
         let files = discover_parquet_files(store.object_store().clone())
             .await
@@ -539,7 +539,7 @@ mod tests {
         let path = std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned")
             .expect("Failed to canonicalize");
         let url = Url::from_file_path(path).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::default()).expect("Failed to get log store");
+        let store = logstore_for(url, HashMap::default(), None).expect("Failed to get log store");
 
         let files = discover_parquet_files(store.object_store().clone())
             .await
@@ -762,6 +762,7 @@ mod tests {
         let store = logstore_for(
             Url::parse("s3://example/non-existent").unwrap(),
             HashMap::default(),
+            None,
         )
         .expect("Failed to get store");
         let result = create_table_with(&files, store).await;
@@ -779,7 +780,7 @@ mod tests {
             std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
                 .expect("Failed to canonicalize");
         let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::default()).expect("Failed to get store");
+        let store = logstore_for(url, HashMap::default(), None).expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store().clone())
             .await
@@ -829,7 +830,7 @@ mod tests {
             "../../tests/data/hive/deltatbl-partitioned",
         )?)
         .expect("Failed to parse");
-        let storage = logstore_for(url, HashMap::default()).expect("Failed to get store");
+        let storage = logstore_for(url, HashMap::default(), None).expect("Failed to get store");
         let meta = storage.object_store().head(&location).await.unwrap();
 
         let schema = fetch_parquet_schema(storage.object_store().clone(), meta)
@@ -1042,7 +1043,7 @@ mod tests {
         // needs to work with
         let table_url = Url::from_file_path(&table_path).expect("Failed to parse local path");
         let store =
-            logstore_for(table_url, HashMap::default()).expect("Failed to get object store");
+            logstore_for(table_url, HashMap::default(), None).expect("Failed to get object store");
 
         let files = discover_parquet_files(store.object_store().clone())
             .await

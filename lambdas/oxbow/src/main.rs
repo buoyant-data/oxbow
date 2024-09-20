@@ -60,7 +60,6 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
             .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
         let lock_client = oxbow::lock::client_for(table_name);
-        let lock = oxbow::lock::acquire(table_name, &lock_client).await;
 
         match oxbow::lock::open_table(table_name).await {
             Ok(mut table) => {
@@ -93,33 +92,32 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                     }
                     Err(err) => {
                         error!("Failed to append to the table {}: {:?}", location, err);
-                        let _ = oxbow::lock::release(lock, &lock_client).await;
                         return Err(Box::new(err));
                     }
                 }
             }
             Err(DeltaTableError::NotATable(_e)) => {
+                let lock = oxbow::lock::acquire(table_name, &lock_client).await;
                 // create the table with our objects
                 info!("Creating new Delta table at: {location}");
-                let table =
-                    oxbow::convert(table_name, Some(oxbow::lock::storage_options(table_name)))
-                        .await;
-                info!("Created table at: {location}");
+                let mut options = oxbow::lock::storage_options(table_name);
+                let table = oxbow::convert(table_name, Some(options)).await;
+                let _ = oxbow::lock::release(lock, &lock_client).await;
 
+                // After releasing the lock, unpack the error
                 if table.is_err() {
                     error!("Failed to create new Delta table: {:?}", table);
                     // Propogate that error up so the function fails
                     let _ = table?;
+                } else {
+                    info!("Created table at: {location}");
                 }
             }
             Err(source) => {
-                let _ = oxbow::lock::release(lock, &lock_client).await;
                 error!("Failed to open the Delta table for some reason: {source:?}");
                 return Err(Box::new(source));
             }
         }
-
-        let _ = oxbow::lock::release(lock, &lock_client).await;
     }
 
     Ok("[]".into())

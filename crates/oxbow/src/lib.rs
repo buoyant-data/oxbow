@@ -169,6 +169,7 @@ pub async fn create_table_with(
      */
     let actions = add_actions_for(files);
 
+    debug!("Creating table with the log store: {store:?}");
     CreateBuilder::new()
         .with_log_store(store)
         .with_columns(columns)

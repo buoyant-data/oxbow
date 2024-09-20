@@ -31,4 +31,12 @@ toc::[]
 | _null_
 | When set to any value this enables schema evolution by the Oxbow Lambda which will cause it to retrieve metadata for the last `.parquet` it reteives in an event notification and add new columns if necessary
 
+| `DYNAMO_LOCK_TABLE_NAME`
+| `delta_rs_lock_table`
+| The DynamoDB table used for locking on table creation. This allows Lambda concurrency for new prefixes which should create a Delta table.
+
+| `DELTA_DYNAMO_TABLE_NAME`
+| `delta_log`
+| The DynamoDB table used for concurrent writes to a single Delta table, link:https://delta-io.github.io/delta-rs/integrations/object-storage/s3/#delta-lake-on-aws-s3-safe-concurrent-writes[more documentation here].
+
 |===

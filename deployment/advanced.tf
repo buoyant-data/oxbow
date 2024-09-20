@@ -30,13 +30,14 @@ resource "aws_lambda_function" "oxbow-advanced" {
   function_name = "oxbow-advanced"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "provided"
-  runtime       = "provided.al2"
+  runtime       = "provided.al2023"
 
   environment {
     variables = {
       AWS_S3_LOCKING_PROVIDER = "dynamodb"
       RUST_LOG                = "deltalake=debug,oxbow=debug"
       DYNAMO_LOCK_TABLE_NAME  = aws_dynamodb_table.oxbow_advanced_locking.name
+      DELTA_DYNAMO_TABLE_NAME = aws_dynamodb_table.oxbow_locking.name
     }
   }
 }
@@ -113,9 +114,7 @@ resource "aws_dynamodb_table" "oxbow_advanced_locking" {
   name         = "oxbow_advanced_lock_table"
   billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
-  hash_key       = "key"
-  read_capacity  = 10
-  write_capacity = 10
+  hash_key = "key"
 
   attribute {
     name = "key"

@@ -17,18 +17,21 @@ resource "aws_s3_bucket_notification" "bucket-notifications" {
 }
 
 resource "aws_lambda_function" "oxbow" {
-  description   = "A simple lambda for converting parquet files to delta tables"
-  filename      = "../target/lambda/oxbow-lambda/bootstrap.zip"
+  description      = "A simple lambda for converting parquet files to delta tables"
+  filename         = "../target/lambda/oxbow-lambda/bootstrap.zip"
+  source_code_hash = filesha256("../target/lambda/oxbow-lambda/bootstrap.zip")
+
   function_name = "oxbow-delta-lake-conversion"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "provided"
-  runtime       = "provided.al2"
+  runtime       = "provided.al2023"
 
   environment {
     variables = {
       AWS_S3_LOCKING_PROVIDER = "dynamodb"
       RUST_LOG                = "deltalake=debug,oxbow=debug"
       DYNAMO_LOCK_TABLE_NAME  = aws_dynamodb_table.oxbow_locking.name
+      DELTA_DYNAMO_TABLE_NAME = aws_dynamodb_table.oxbow_logstore.name
     }
   }
 }
@@ -108,15 +111,12 @@ resource "aws_iam_role" "iam_for_lambda" {
   ]
 }
 
-# The DynamoDb table is used for providing safe concurrent writes to delta
-# tables.
+# This DynamoDb table is used for providing safe table creation for oxbow
 resource "aws_dynamodb_table" "oxbow_locking" {
   name         = "oxbow_lock_table"
   billing_mode = "PAY_PER_REQUEST"
   # Default name of the partition key hard-coded in delta-rs
-  hash_key       = "key"
-  read_capacity  = 10
-  write_capacity = 10
+  hash_key = "key"
 
   attribute {
     name = "key"
@@ -126,6 +126,24 @@ resource "aws_dynamodb_table" "oxbow_locking" {
   ttl {
     attribute_name = "leaseDuration"
     enabled        = true
+  }
+}
+
+resource "aws_dynamodb_table" "oxbow_logstore" {
+  name         = "oxbow_logstore_table"
+  billing_mode = "PAY_PER_REQUEST"
+  # Default name of the partition key hard-coded in delta-rs
+  hash_key  = "tablePath"
+  range_key = "fileName"
+
+  attribute {
+    name = "tablePath"
+    type = "S"
+  }
+
+  attribute {
+    name = "fileName"
+    type = "S"
   }
 }
 

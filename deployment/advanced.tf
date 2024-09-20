@@ -8,7 +8,7 @@
 # S3 Event Notifications -> SQS -> group-events -> SQS FIFO -> oxbow
 
 resource "aws_s3_bucket" "parquets-advanced" {
-  bucket = "oxbow-advanced"
+  bucket = "simple-oxbow-advanced"
 }
 
 resource "aws_s3_bucket_notification" "advanced-bucket-notifications" {

@@ -1,7 +1,7 @@
 # This Terraform file is necessary to configure the basic
 # infrastructure around the Oxbow lambda function
 resource "aws_s3_bucket" "parquets" {
-  bucket = "oxbow-simple"
+  bucket = "rtyler-oxbow-simple"
 }
 
 resource "aws_s3_bucket_notification" "bucket-notifications" {

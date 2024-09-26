@@ -100,7 +100,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                 let lock = oxbow::lock::acquire(table_name, &lock_client).await;
                 // create the table with our objects
                 info!("Creating new Delta table at: {location}");
-                let mut options = oxbow::lock::storage_options(table_name);
+                let options = oxbow::lock::storage_options(table_name);
                 let table = oxbow::convert(table_name, Some(options)).await;
                 let _ = oxbow::lock::release(lock, &lock_client).await;
 

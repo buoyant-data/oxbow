@@ -59,9 +59,9 @@ pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, TableMods>
             if let Some(objects) = mods.get_mut(&key) {
                 if let Some(event_name) = &record.event_name {
                     if event_name.starts_with("ObjectCreated") {
-                        objects.adds.push(om);
+                        objects.add(om);
                     } else if event_name == "ObjectRemoved:Delete" {
-                        objects.removes.push(om);
+                        objects.remove(om);
                     }
                 }
             }
@@ -376,7 +376,7 @@ mod tests {
             .expect("Failed to get the first table");
         assert_eq!(
             1,
-            table_one.adds.len(),
+            table_one.adds().len(),
             "Shoulid only be one object in table one"
         );
 
@@ -385,7 +385,7 @@ mod tests {
             .expect("Failed to get the second table");
         assert_eq!(
             2,
-            table_two.adds.len(),
+            table_two.adds().len(),
             "Shoulid only be two objects in table two"
         );
     }
@@ -424,7 +424,7 @@ mod tests {
         let tables = objects_by_table(records.as_slice());
         if let Some(mods) = tables.get("s3://oxbow-simple/gcs-export") {
             assert_eq!(
-                mods.removes.len(),
+                mods.removes().len(),
                 1,
                 "Should have recorded a removes table modification"
             );

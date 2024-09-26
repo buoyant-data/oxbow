@@ -30,8 +30,62 @@ pub mod write;
 /// or removed.
 #[derive(Debug, Clone, Default)]
 pub struct TableMods {
-    pub adds: Vec<ObjectMeta>,
-    pub removes: Vec<ObjectMeta>,
+    adds: HashSet<OM>,
+    removes: HashSet<OM>,
+}
+
+impl TableMods {
+    pub fn new(adds: &[ObjectMeta], removes: &[ObjectMeta]) -> Self {
+        Self {
+            adds: adds.iter().map(|o| o.clone().into()).collect(),
+            removes: removes.iter().map(|o| o.clone().into()).collect(),
+        }
+    }
+
+    pub fn adds(&self) -> Vec<&ObjectMeta> {
+        self.adds.iter().map(|om| &om.object).collect()
+    }
+
+    pub fn add(&mut self, add: ObjectMeta) -> bool {
+        self.adds.insert(add.into())
+    }
+
+    pub fn removes(&self) -> Vec<&ObjectMeta> {
+        self.removes.iter().map(|om| &om.object).collect()
+    }
+
+    pub fn remove(&mut self, remove: ObjectMeta) -> bool {
+        self.removes.insert(remove.into())
+    }
+}
+
+/// Simple wrapper struct to add some hashing onto ObjectMeta
+#[derive(Debug, Clone, PartialEq)]
+struct OM {
+    object: ObjectMeta,
+}
+
+impl Eq for OM {}
+
+impl From<ObjectMeta> for OM {
+    fn from(object: ObjectMeta) -> Self {
+        Self { object }
+    }
+}
+
+use std::hash::{Hash, Hasher};
+impl Hash for OM {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.object.location.hash(state)
+    }
+}
+
+impl std::ops::Deref for OM {
+    type Target = ObjectMeta;
+
+    fn deref(&self) -> &Self::Target {
+        &self.object
+    }
 }
 
 /// convert is the main function to be called by the CLI or other "one shot" executors which just
@@ -204,14 +258,20 @@ pub async fn actions_for(
 ) -> DeltaResult<Vec<Action>> {
     let existing_files: Vec<deltalake::Path> = table.get_files_iter()?.collect();
     let new_files: Vec<ObjectMeta> = mods
-        .adds
-        .iter()
+        .adds()
+        .into_iter()
         .filter(|f| !existing_files.contains(&f.location))
         .cloned()
         .collect();
 
     let adds = add_actions_for(&new_files);
-    let removes = remove_actions_for(&mods.removes);
+    let removes = remove_actions_for(
+        &mods
+            .removes()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<ObjectMeta>>(),
+    );
     let metadata = match evolve_schema {
         true => match metadata_actions_for(&new_files, table).await {
             Ok(axns) => axns,
@@ -861,10 +921,7 @@ mod tests {
             .await
             .expect("Failed to create table");
 
-        let mods = TableMods {
-            adds: files,
-            ..Default::default()
-        };
+        let mods = TableMods::new(&files, &vec![]);
 
         let actions = actions_for(&mods, &table, false)
             .await
@@ -882,10 +939,7 @@ mod tests {
     async fn test_actions_for_with_redundant_files() {
         let table = util::test_table().await;
         let files = util::paths_to_objectmetas(table.get_files_iter().unwrap());
-        let mods = TableMods {
-            adds: files,
-            ..Default::default()
-        };
+        let mods = TableMods::new(&files, &vec![]);
 
         let actions = actions_for(&mods, &table, false)
             .await
@@ -901,10 +955,7 @@ mod tests {
     async fn test_actions_for_with_removes() -> DeltaResult<()> {
         let table = util::test_table().await;
         let files = util::paths_to_objectmetas(table.get_files_iter()?);
-        let mods = TableMods {
-            adds: vec![],
-            removes: files,
-        };
+        let mods = TableMods::new(&vec![], &files);
 
         let actions = actions_for(&mods, &table, false)
             .await
@@ -914,6 +965,83 @@ mod tests {
             4,
             "Expected an add action for every new file discovered"
         );
+
+        Ok(())
+    }
+
+    /// This test and the one with removes blow ensures that if oxbow is triggered with multiple
+    /// versions of the same file in a single payload that it will not add redundant `add` or
+    /// `remove` actions to the transaction log.
+    ///
+    /// While these not expressly forbidden by the Delta protocol, the Databricks runtime does fail
+    /// to operate on these files correct, specifically in the optimize case
+    #[tokio::test]
+    async fn test_actions_for_with_redundant_adds() -> DeltaResult<()> {
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+
+        let files = discover_parquet_files(store.object_store().clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+
+        // Creating the table with one of the discovered files, so the remaining three should be
+        // added later
+        let table = create_table_with(&[files[0].clone()], store.clone())
+            .await
+            .expect("Failed to create table");
+
+        let mut redundant = files.clone();
+        redundant.append(&mut files.clone());
+        let mods = TableMods::new(&redundant, &vec![]);
+
+        let actions = actions_for(&mods, &table, false)
+            .await
+            .expect("Failed to curate actions");
+        assert_eq!(
+            actions.len(),
+            3,
+            "Expected an add action for every new file discovered"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_actions_for_with_redundant_removes() -> DeltaResult<()> {
+        let table = util::test_table().await;
+        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let mut redundant_removes = files.clone();
+        redundant_removes.append(&mut files.clone());
+        let mods = TableMods::new(&vec![], &redundant_removes);
+
+        let actions = actions_for(&mods, &table, false)
+            .await
+            .expect("Failed to curate actions");
+        assert_eq!(
+            actions.len(),
+            4,
+            "Expected an add action for every new file discovered"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_tablemods_uniqueness() -> DeltaResult<()> {
+        let table = util::test_table().await;
+        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let mut redundant_removes = files.clone();
+        redundant_removes.append(&mut files.clone());
+        let mods = TableMods::new(&vec![], &redundant_removes);
+
+        assert_eq!(0, mods.adds().len());
+        assert_eq!(4, mods.removes().len());
+
+        let mods = TableMods::new(&redundant_removes, &vec![]);
+
+        assert_eq!(4, mods.adds().len());
+        assert_eq!(0, mods.removes().len());
 
         Ok(())
     }
@@ -933,10 +1061,7 @@ mod tests {
         let initial_version = table.version();
 
         let files = util::paths_to_objectmetas(table.get_files_iter().unwrap());
-        let mods = TableMods {
-            adds: vec![],
-            removes: files,
-        };
+        let mods = TableMods::new(&vec![], &files);
         let actions = actions_for(&mods, &table, false)
             .await
             .expect("Failed to curate actions");
@@ -970,10 +1095,7 @@ mod tests {
         let initial_version = table.version();
         assert_eq!(0, initial_version);
 
-        let mods = TableMods {
-            adds: files.clone(),
-            removes: vec![files[0].clone()],
-        };
+        let mods = TableMods::new(&files, &vec![files[0].clone()]);
         let actions = actions_for(&mods, &table, false)
             .await
             .expect("Failed to curate actions");
@@ -1018,10 +1140,7 @@ mod tests {
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(adds.len(), 4, "No files discovered");
-        let mods = TableMods {
-            adds,
-            ..Default::default()
-        };
+        let mods = TableMods::new(&adds, &vec![]);
 
         let actions = actions_for(&mods, &table, true)
             .await

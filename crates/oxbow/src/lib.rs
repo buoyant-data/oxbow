@@ -993,7 +993,7 @@ mod tests {
 
         let mut redundant = files.clone();
         redundant.append(&mut files.clone());
-        let mods = TableMods::new(&redundant, &vec![]);
+        let mods = TableMods::new(&redundant, &[]);
 
         let actions = actions_for(&mods, &table, false)
             .await
@@ -1140,7 +1140,7 @@ mod tests {
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(adds.len(), 4, "No files discovered");
-        let mods = TableMods::new(&adds, &vec![]);
+        let mods = TableMods::new(&adds, &[]);
 
         let actions = actions_for(&mods, &table, true)
             .await

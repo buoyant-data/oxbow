@@ -434,6 +434,33 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_from_sqs_with_duplicates() {
+        let buf = r#"{"Records":[{"eventVersion":"2.1","eventSource":"aws:s3","awsRegion":"us-west-2","eventTime":"2023-12-18T00:22:24.292Z","eventName":"ObjectCreated:Put","userIdentity":{"principalId":"A16S3A764ZBGJN"},"requestParameters":{"sourceIPAddress":"76.218.225.124"},"responseElements":{"x-amz-request-id":"CWK6W9YANZBH6SK4","x-amz-id-2":"H7P6nIKhchv9soZ4pnX0GsAj3zqqdrShFddk4kX9UpSbC2C5FL9XNvNtSxtTD1Nt0ZtTnREeZIMqO1IsSpkebocjUTRJkumh"},"s3":{"s3SchemaVersion":"1.0","configurationId":"test-delete","bucket":{"name":"oxbow-simple","ownerIdentity":{"principalId":"A16S3A764ZBGJN"},"arn":"arn:aws:s3:::oxbow-simple"},"object":{"key":"gcs-export/ds%3D2023-12-12/testing_oxbow-partitioned2_ds%3D2023-12-12_000000000000.parquet","sequencer":"00657F90C047858AE9"}}},{"eventVersion":"2.1","eventSource":"aws:s3","awsRegion":"us-west-2","eventTime":"2023-12-18T00:22:24.292Z","eventName":"ObjectCreated:Put","userIdentity":{"principalId":"A16S3A764ZBGJN"},"requestParameters":{"sourceIPAddress":"76.218.225.124"},"responseElements":{"x-amz-request-id":"CWK6W9YANZBH6SK4","x-amz-id-2":"H7P6nIKhchv9soZ4pnX0GsAj3zqqdrShFddk4kX9UpSbC2C5FL9XNvNtSxtTD1Nt0ZtTnREeZIMqO1IsSpkebocjUTRJkumh"},"s3":{"s3SchemaVersion":"1.0","configurationId":"test-delete","bucket":{"name":"oxbow-simple","ownerIdentity":{"principalId":"A16S3A764ZBGJN"},"arn":"arn:aws:s3:::oxbow-simple"},"object":{"key":"gcs-export/ds%3D2023-12-12/testing_oxbow-partitioned2_ds%3D2023-12-12_000000000000.parquet","sequencer":"00657F90C047858AE9"}}}]}"#;
+        let message = SqsMessage {
+            body: Some(buf.into()),
+            ..Default::default()
+        };
+        let event = SqsEvent {
+            records: vec![message],
+        };
+
+        let events = s3_from_sqs(event).expect("Failed to get events");
+        assert_eq!(2, events.len(), "Unexpected number of entries");
+
+        let records = records_with_url_decoded_keys(&events);
+        let tables = objects_by_table(records.as_slice());
+        if let Some(mods) = tables.get("s3://oxbow-simple/gcs-export") {
+            assert_eq!(
+                mods.adds().len(),
+                1,
+                "Should have recorded an add modification"
+            );
+        } else {
+            assert!(false, "Failed to find the right key on {tables:?}");
+        }
+    }
+
+    #[test]
     fn test_s3_from_sqs_with_invalid() {
         let message = SqsMessage {
             body: Some("This ain't no valid JSON".into()),

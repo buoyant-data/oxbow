@@ -30,61 +30,40 @@ pub mod write;
 /// or removed.
 #[derive(Debug, Clone, Default)]
 pub struct TableMods {
-    adds: HashSet<OM>,
-    removes: HashSet<OM>,
+    adds: HashMap<deltalake::Path, ObjectMeta>,
+    removes: HashMap<deltalake::Path, ObjectMeta>,
 }
 
 impl TableMods {
     pub fn new(adds: &[ObjectMeta], removes: &[ObjectMeta]) -> Self {
         Self {
-            adds: adds.iter().map(|o| o.clone().into()).collect(),
-            removes: removes.iter().map(|o| o.clone().into()).collect(),
+            adds: HashMap::from_iter(adds.iter().map(|o| (o.location.clone(), o.clone()))),
+            removes: HashMap::from_iter(removes.iter().map(|o| (o.location.clone(), o.clone()))),
         }
     }
 
     pub fn adds(&self) -> Vec<&ObjectMeta> {
-        self.adds.iter().map(|om| &om.object).collect()
+        self.adds.values().collect()
     }
 
     pub fn add(&mut self, add: ObjectMeta) -> bool {
-        self.adds.insert(add.into())
+        if self.adds.contains_key(&add.location) {
+            return false;
+        }
+        self.adds.insert(add.location.clone(), add);
+        true
     }
 
     pub fn removes(&self) -> Vec<&ObjectMeta> {
-        self.removes.iter().map(|om| &om.object).collect()
+        self.removes.values().collect()
     }
 
     pub fn remove(&mut self, remove: ObjectMeta) -> bool {
-        self.removes.insert(remove.into())
-    }
-}
-
-/// Simple wrapper struct to add some hashing onto ObjectMeta
-#[derive(Debug, Clone, PartialEq)]
-struct OM {
-    object: ObjectMeta,
-}
-
-impl Eq for OM {}
-
-impl From<ObjectMeta> for OM {
-    fn from(object: ObjectMeta) -> Self {
-        Self { object }
-    }
-}
-
-use std::hash::{Hash, Hasher};
-impl Hash for OM {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.object.location.hash(state)
-    }
-}
-
-impl std::ops::Deref for OM {
-    type Target = ObjectMeta;
-
-    fn deref(&self) -> &Self::Target {
-        &self.object
+        if self.removes.contains_key(&remove.location) {
+            return false;
+        }
+        self.removes.insert(remove.location.clone(), remove);
+        true
     }
 }
 
@@ -1196,5 +1175,31 @@ mod tests {
             1,
             "Execpted a scheam evolution metadata action"
         );
+    }
+
+    #[test]
+    fn test_table_mods_add() {
+        let mut mods = TableMods::default();
+        let meta = ObjectMeta {
+            location: Path::from("some.parquet"),
+            e_tag: None,
+            size: 11351,
+            last_modified: Utc::now(),
+            version: None,
+        };
+        let meta2 = ObjectMeta {
+            location: Path::from("some.parquet"),
+            e_tag: None,
+            size: 11351,
+            last_modified: Utc::now(),
+            version: None,
+        };
+
+        assert!(mods.add(meta2), "Failed to add new ObjectMeta");
+        assert!(
+            !mods.add(meta),
+            "Should have gotten false when adding a duplicate"
+        );
+        assert_eq!(mods.adds().len(), 1, "Why are there two? {mods:#?}");
     }
 }

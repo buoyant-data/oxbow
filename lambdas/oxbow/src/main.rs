@@ -76,7 +76,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                             version, location
                         );
 
-                        if version % 10 == 0 {
+                        if should_checkpoint(version) {
                             info!("Creating a checkpoint for {}", location);
                             if table.version() == version {
                                 match deltalake::checkpoints::create_checkpoint(&table).await {
@@ -123,5 +123,21 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     Ok("[]".into())
 }
 
+/// Determine whether the version qualitfies for checkpointing
+fn should_checkpoint(version: i64) -> bool {
+    (version > 0) && (version % 10 == 0)
+}
+
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_should_checkpoint() {
+        assert!(should_checkpoint(10));
+        assert!(should_checkpoint(100));
+        assert!(!should_checkpoint(1));
+        assert!(!should_checkpoint(11));
+        assert!(!should_checkpoint(0));
+    }
+}

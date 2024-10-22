@@ -213,7 +213,7 @@ pub async fn create_table_with(
 }
 
 /// Commit the given [Action]s to the [DeltaTable]
-pub async fn commit_to_table(actions: &[Action], table: &mut DeltaTable) -> DeltaResult<i64> {
+pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
     if actions.is_empty() {
         return Ok(table.version());
     }

@@ -62,14 +62,14 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         let lock_client = oxbow::lock::client_for(table_name);
 
         match oxbow::lock::open_table(table_name).await {
-            Ok(mut table) => {
+            Ok(table) => {
                 info!("Opened table to append: {:?}", table);
 
                 let actions = oxbow::actions_for(table_mods, &table, can_evolve_schema)
                     .await
                     .expect("Failed to generate actions for the table modifications");
 
-                match oxbow::commit_to_table(&actions, &mut table).await {
+                match oxbow::commit_to_table(&actions, &table).await {
                     Ok(version) => {
                         info!(
                             "Successfully appended version {} to table at {}",
@@ -78,15 +78,11 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
 
                         if should_checkpoint(version) {
                             info!("Creating a checkpoint for {}", location);
-                            if table.version() == version {
-                                match deltalake::checkpoints::create_checkpoint(&table).await {
-                                    Ok(_) => info!("Successfully created checkpoint"),
-                                    Err(e) => {
-                                        error!("Failed to create checkpoint for {location}: {e:?}")
-                                    }
+                            match deltalake::checkpoints::create_checkpoint(&table).await {
+                                Ok(_) => info!("Successfully created checkpoint"),
+                                Err(e) => {
+                                    error!("Failed to create checkpoint for {location}: {e:?}")
                                 }
-                            } else {
-                                error!("The table was reloaded to create a checkpoint but a new version already exists!");
                             }
                         }
                     }

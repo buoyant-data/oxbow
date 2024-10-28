@@ -67,7 +67,9 @@ fn extensions_for(records: &[S3EventRecord]) -> HashMap<StoredObject, String> {
     let mut result = HashMap::new();
 
     for record in records {
-        if let (Some(bucket), Some(key)) = (&record.s3.bucket.name, &record.s3.object.key) {
+        if let (Some(bucket), Some(key)) =
+            (&record.s3.bucket.name, &record.s3.object.url_decoded_key)
+        {
             let path = Path::new(key);
             if let Some(ext) = path.extension() {
                 let stored = StoredObject {
@@ -89,17 +91,25 @@ mod tests {
 
     #[test]
     fn test_extensions_for_events() {
-        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple.json")
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple-urlencoded.json")
             .expect("Failed to read file");
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
-        assert_eq!(4, event.records.len());
+        assert_eq!(3, event.records.len());
 
-        let exts = extensions_for(&event.records);
+        let urldecoded = records_with_url_decoded_keys(&event.records);
+        let exts = extensions_for(&urldecoded);
         assert_eq!(exts.keys().len(), event.records.len());
 
         let locator = StoredObject {
             bucket: "example-bucket".into(),
             key: "some/first-prefix/some-file.parquet".into(),
+        };
+
+        assert_eq!(Some("parquet".to_string()), exts.get(&locator).cloned());
+
+        let locator = StoredObject {
+            bucket: "example-bucket".into(),
+            key: "some/prefix/ds=2023-01-01/a.parquet".into(),
         };
 
         assert_eq!(Some("parquet".to_string()), exts.get(&locator).cloned());

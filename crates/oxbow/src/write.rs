@@ -10,7 +10,10 @@ use std::sync::Arc;
 use tracing::log::*;
 
 /// Function responsible for appending values to an opened [DeltaTable]
-pub async fn append_values(mut table: DeltaTable, values: &[String]) -> DeltaResult<DeltaTable> {
+pub async fn append_values(
+    mut table: DeltaTable,
+    values: impl IntoIterator<Item: AsRef<str>>,
+) -> DeltaResult<DeltaTable> {
     let schema = table.get_schema()?;
     debug!("Attempting to append values with schema: {schema:?}");
     let schema = ArrowSchema::try_from(schema)?;
@@ -19,7 +22,7 @@ pub async fn append_values(mut table: DeltaTable, values: &[String]) -> DeltaRes
     let mut written = false;
 
     for value in values {
-        let cursor = Cursor::new(value);
+        let cursor: Cursor<&str> = Cursor::new(value.as_ref());
         let reader = ReaderBuilder::new(schema.clone().into())
             .build(cursor)
             .unwrap();
@@ -66,8 +69,7 @@ pub async fn append_values(mut table: DeltaTable, values: &[String]) -> DeltaRes
 
 /// Function responsible for appending values to an opened [DeltaTable]
 pub async fn append_jsonl(table: DeltaTable, jsonl: &str) -> DeltaResult<DeltaTable> {
-    let values: Vec<String> = jsonl.split("\n").map(|m| m.to_string()).collect();
-    append_values(table, values.as_slice()).await
+    append_values(table, jsonl.split("\n").map(|m| m.to_string())).await
 }
 
 ///
@@ -164,11 +166,11 @@ mod tests {
     async fn test_append_values() -> DeltaResult<()> {
         let table = setup_test_table().await?;
 
-        let values = vec![
+        let values: Vec<String> = vec![
             r#"{"id" : 0, "name" : "Ben"}"#.into(),
             r#"{"id" : 1, "name" : "Chris"}"#.into(),
         ];
-        let table = append_values(table, values.as_slice())
+        let table = append_values(table, values)
             .await
             .expect("Failed to do nothing");
 

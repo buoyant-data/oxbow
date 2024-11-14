@@ -1,0 +1,47 @@
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:toc: macro
+
+= File Loader
+
+The `file-loader` is an S3 Event Notifications triggered Lambda whose responsibility is to read structured data files (other than `.parquet`) and convert their contents into link:https://parquet.apache.org[Apache Parquet] data files, appending to a configured Delta Lake location.
+
+toc::[]
+
+
+for simplicity's sake this Lambda is intended to only work with a single Delta
+table. For loading into multiple Delta tables, deploy different instances of
+this Lambda triggered by different event sources.
+
+== Environment Variables
+
+|===
+
+| Name | Default Value | Notes
+
+| `AWS_S3_LOCKING_PROVIDER`
+|
+| Set to `dynamodb` to enable safe concurrent writes to the table
+
+| `DELTA_TABLE_URI`
+|
+| Set to the `s3://` URL of the Delta table which should be appended
+
+| `DYNAMO_LOCK_TABLE_NAME`
+|
+| Set to the DynamoDB table used for locking, required for safe concurrent writes.
+
+| `RUST_LOG`
+| `error`
+| Set the log level, e.g. `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `oxbow=debug`
+
+| `UNWRAP_SNS_ENVELOPE`
+| _null_
+| Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
+
+|===

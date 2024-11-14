@@ -1,6 +1,6 @@
-/**
- * oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas
- */
+///
+/// oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas
+///
 use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
 use aws_lambda_events::sns::SnsMessage;
 use aws_lambda_events::sqs::SqsEvent;

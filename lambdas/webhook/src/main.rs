@@ -19,42 +19,35 @@ async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
             .map_err(Box::new)?);
     }
 
-    let response = match event.method() {
+    match event.method() {
         &http::method::Method::POST => {
             debug!("Processing POST");
-            let body = event.body();
-            match body {
+            match event.body() {
                 lambda_http::Body::Text(buf) => {
                     debug!("Deserializing body text and appending to {table_uri}");
                     let table = oxbow::lock::open_table(&table_uri).await?;
-                    debug!("{}", &buf);
-                    match append_jsonl(table, buf).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                            error!("Failed to append the values to configured Delta table: {e:?}");
-                            return Err(Box::new(e));
-                        }
-                    }
+                    debug!("buffer: {buf}");
+                    let lines: Vec<String> = buf.split("\n").map(|s| s.to_string()).collect();
+                    let _ = append_values(table, lines).await?;
                 }
                 others => {
                     warn!("Unsupported body payload type: {others:?}");
                 }
             }
-            Response::builder()
+            Ok(Response::builder()
                 .status(200)
                 .header("content-type", "application/json")
                 .body("{}".into())
-                .map_err(Box::new)?
+                .map_err(Box::new)?)
         }
         others => {
             warn!("Received method I cannot support: {others:?}");
-            Response::builder()
+            Ok(Response::builder()
                 .status(400)
                 .body("I only speak POST".into())
-                .map_err(Box::new)?
+                .map_err(Box::new)?)
         }
-    };
-    Ok(response)
+    }
 }
 
 #[tokio::main]

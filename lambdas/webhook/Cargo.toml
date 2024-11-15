@@ -7,7 +7,7 @@ homepage.workspace = true
 
 [dependencies]
 http = "1.1.0"
-lambda_http = "0.10.0"
+lambda_http = "0.13.0"
 
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }

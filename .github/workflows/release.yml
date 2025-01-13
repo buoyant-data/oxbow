@@ -64,7 +64,7 @@ jobs:
           platform: linux # Other valid options: 'windows' or 'darwin'
           arch: x86_64 # Other valid options for linux: 'aarch64'
       - name: Build release
-        run: cargo lambda build --release --output-format zip
+        run: cargo lambda build --compiler cross --release --output-format zip
 
       - name: release
         uses: actions/create-release@v1

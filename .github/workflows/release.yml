@@ -63,6 +63,8 @@ jobs:
           repo: cargo-lambda/cargo-lambda
           platform: linux # Other valid options: 'windows' or 'darwin'
           arch: x86_64 # Other valid options for linux: 'aarch64'
+      - name: Install cross
+        run: cargo binstall cross
       - name: Build release
         run: cargo lambda build --compiler cross --release --output-format zip
 

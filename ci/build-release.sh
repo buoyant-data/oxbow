@@ -6,4 +6,4 @@ fi;
 
 . venv/bin/activate
 
-exec cargo lambda build --compiler cross --release --output-format zip
+exec cargo lambda build --release --output-format zip

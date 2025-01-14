@@ -78,7 +78,7 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
 
                         if should_checkpoint(version) {
                             info!("Creating a checkpoint for {}", location);
-                            match deltalake::checkpoints::create_checkpoint(&table).await {
+                            match deltalake::checkpoints::create_checkpoint(&table, None).await {
                                 Ok(_) => info!("Successfully created checkpoint"),
                                 Err(e) => {
                                     error!("Failed to create checkpoint for {location}: {e:?}")

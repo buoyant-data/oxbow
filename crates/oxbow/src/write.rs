@@ -49,7 +49,7 @@ pub async fn append_values(
             // Reload the table to make sure we have the latest version to checkpoint
             let _ = table.load().await;
             if table.version() == version {
-                match deltalake::checkpoints::create_checkpoint(&table).await {
+                match deltalake::checkpoints::create_checkpoint(&table, None).await {
                     Ok(_) => info!("Successfully created checkpoint"),
                     Err(e) => {
                         error!("Failed to create checkpoint for {table:?}: {e:?}")

@@ -95,7 +95,7 @@ pub async fn convert(
                 }
             };
             let store = logstore_for(location, storage_options.unwrap_or_default(), None)?;
-            let files = discover_parquet_files(store.object_store().clone()).await?;
+            let files = discover_parquet_files(store.object_store(None).clone()).await?;
             debug!(
                 "Files identified for turning into a delta table: {:?}",
                 files
@@ -168,7 +168,7 @@ pub async fn create_table_with(
         "Using the smallest parquet file for schema inference: {:?}",
         smallest.location
     );
-    let file_reader = ParquetObjectReader::new(store.object_store().clone(), smallest.clone());
+    let file_reader = ParquetObjectReader::new(store.object_store(None).clone(), smallest.clone());
     let arrow_schema = ParquetRecordBatchStreamBuilder::new(file_reader)
         .await?
         .build()?
@@ -485,7 +485,7 @@ mod tests {
             let (_tempdir, store) =
                 create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
 
-            let files = discover_parquet_files(store.object_store().clone())
+            let files = discover_parquet_files(store.object_store(None).clone())
                 .await
                 .expect("Failed to discover parquet files");
             assert_eq!(files.len(), 4, "No files discovered");
@@ -568,7 +568,7 @@ mod tests {
         let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
         let store = logstore_for(url, HashMap::default(), None).expect("Failed to get log store");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 0);
@@ -581,7 +581,7 @@ mod tests {
         let url = Url::from_file_path(path).expect("Failed to parse local path");
         let store = logstore_for(url, HashMap::default(), None).expect("Failed to get log store");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
 
@@ -739,7 +739,7 @@ mod tests {
     async fn create_schema_for_partitioned_path() {
         let (_tempdir, store) =
             util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 4, "No files discovered");
@@ -783,7 +783,7 @@ mod tests {
     async fn create_table_with_millis_timestamp() {
         let (_tempdir, store) = util::create_temp_path_with("../../tests/data/hive/faker_products");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 1, "No files discovered");
@@ -822,7 +822,7 @@ mod tests {
         let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
         let store = logstore_for(url, HashMap::default(), None).expect("Failed to get store");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 2, "No files discovered");
@@ -837,7 +837,7 @@ mod tests {
     async fn test_avoid_duplicate_partition_columns() {
         let (_tempdir, store) = util::create_temp_path_with("../../tests/data/hive/gcs-export");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 2, "No files discovered");
@@ -871,9 +871,9 @@ mod tests {
         )?)
         .expect("Failed to parse");
         let storage = logstore_for(url, HashMap::default(), None).expect("Failed to get store");
-        let meta = storage.object_store().head(&location).await.unwrap();
+        let meta = storage.object_store(None).head(&location).await.unwrap();
 
-        let schema = fetch_parquet_schema(storage.object_store().clone(), meta)
+        let schema = fetch_parquet_schema(storage.object_store(None).clone(), meta)
             .await
             .expect("Failed to load parquet file schema");
         assert_eq!(
@@ -889,7 +889,7 @@ mod tests {
         let (_tempdir, store) =
             util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 4, "No files discovered");
@@ -959,7 +959,7 @@ mod tests {
         let (_tempdir, store) =
             util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 4, "No files discovered");
@@ -1062,7 +1062,7 @@ mod tests {
     async fn test_commit_with_all_actions() {
         let (_tempdir, store) =
             util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 4, "No files discovered");
@@ -1115,7 +1115,7 @@ mod tests {
         let initial_version = table.version();
         assert_eq!(initial_version, 0);
 
-        let adds = discover_parquet_files(store.object_store().clone())
+        let adds = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(adds.len(), 4, "No files discovered");
@@ -1144,7 +1144,7 @@ mod tests {
         let store =
             logstore_for(table_url, HashMap::default(), None).expect("Failed to get object store");
 
-        let files = discover_parquet_files(store.object_store().clone())
+        let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");
         assert_eq!(files.len(), 4, "No files discovered");

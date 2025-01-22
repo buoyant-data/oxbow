@@ -45,22 +45,6 @@ pub async fn append_values(
     if written {
         let version = writer.flush_and_commit(&mut table).await?;
         info!("Successfully flushed v{version} to Delta table");
-        if version % 10 == 0 {
-            // Reload the table to make sure we have the latest version to checkpoint
-            let _ = table.load().await;
-            if table.version() == version {
-                match deltalake::checkpoints::create_checkpoint(&table, None).await {
-                    Ok(_) => info!("Successfully created checkpoint"),
-                    Err(e) => {
-                        error!("Failed to create checkpoint for {table:?}: {e:?}")
-                    }
-                }
-            } else {
-                error!(
-                    "The table was reloaded to create a checkpoint but a new version already exists!"
-                );
-            }
-        }
     } else {
         warn!("Failed to write any data files! Cowardly avoiding a Delta commit");
     }
@@ -175,6 +159,36 @@ mod tests {
             .expect("Failed to do nothing");
 
         assert_eq!(table.version(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_append_values_checkpoint() -> DeltaResult<()> {
+        let mut table = setup_test_table().await?;
+
+        for _ in 0..101 {
+            let values: Vec<String> = vec![
+                r#"{"id" : 0, "name" : "Ben"}"#.into(),
+                r#"{"id" : 1, "name" : "Chris"}"#.into(),
+            ];
+            table = append_values(table, values)
+                .await
+                .expect("Failed to do nothing");
+        }
+
+        if let Some(state) = table.state.as_ref() {
+            // The default is expected to be 100
+            assert_eq!(100, state.table_config().checkpoint_interval());
+        }
+
+        use deltalake::storage::Path;
+        let checkpoint = table
+            .object_store()
+            .head(&Path::from("_delta_log/_last_checkpoint"))
+            .await?;
+
+        assert_ne!(0, checkpoint.size);
+        assert_eq!(table.version(), 101);
         Ok(())
     }
 }

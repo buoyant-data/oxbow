@@ -4,6 +4,7 @@
 ///
 use aws_lambda_events::event::sqs::{SqsEvent, SqsMessage};
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
+use serde::Deserialize;
 use tracing::log::*;
 
 use oxbow::write::*;
@@ -15,7 +16,12 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
     debug!("payload received: {:?}", event.payload.records);
 
-    let values = extract_json_from_records(&event.payload.records);
+    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+        Ok(_) => unwrap_sns_payload(&event.payload.records),
+        Err(_) => event.payload.records,
+    };
+
+    let values = extract_json_from_records(&records);
     debug!("JSON pulled out: {values:?}");
 
     if !values.is_empty() {
@@ -71,6 +77,42 @@ fn extract_json_from_records(records: &[SqsMessage]) -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
+/// SNS cannot help but JSON encode all its payloads so sometimes we must unwrap it.
+fn unwrap_sns_payload(records: &[SqsMessage]) -> Vec<SqsMessage> {
+    let mut unpacked = vec![];
+    for record in records {
+        if let Some(body) = record.body.as_ref() {
+            trace!("Attempting to unwrap the contents of nested JSON: {body}");
+            let wrapped = json_unescape(body).expect("Failed to unescape the body of the message");
+            let nested: SNSWrapper = serde_json::from_str(&wrapped).expect(
+                "Failed to unpack SNS
+messages, this could be a misconfiguration and there is no SNS envelope or raw_delivery has not
+been set",
+            );
+            for body in nested.records {
+                let message: SqsMessage = SqsMessage {
+                    body: Some(serde_json::to_string(&body).expect("Failed to reserialize JSON")),
+                    ..Default::default()
+                };
+                unpacked.push(message);
+            }
+        }
+    }
+    unpacked
+}
+
+/// SNS likes to wrap everything in double
+// <https://stackoverflow.com/a/68996403>
+fn json_unescape(s: &str) -> serde_json::Result<String> {
+    serde_json::from_str(&format!("\"{}\"", s))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct SNSWrapper {
+    records: Vec<serde_json::Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,5 +139,22 @@ mod tests {
             r#"{"key" : "value"}"#.into(),
         ];
         assert_eq!(values, expected);
+    }
+
+    #[test]
+    fn test_unwrap_sns() {
+        // This is an example of what a full message can look like
+        //let body = r#"{\"Records\":[{\"eventVersion\":\"2.1\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"us-east-2\",\"eventTime\":\"2024-01-25T20:57:23.379Z\",\"eventName\":\"ObjectCreated:CompleteMultipartUpload\",\"userIdentity\":{\"principalId\":\"AWS:AROAU7FUYKEVYG4GF4IAV:s3-replication\"},\"requestParameters\":{\"sourceIPAddress\":\"10.0.153.194\"},\"responseElements\":{\"x-amz-request-id\":\"RYAX8R8CB6FF1MQN\",\"x-amz-id-2\":\"uLUt4C/TfjwvpObPlTnrWYjOIPH1YT1yJ8jZjqRyLIuTLOxGSkNgKc2Hd1/O7wTP2cd3u59lRtVYrU4ECizehRYw0NGNlL5b\"},\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"tf-s3-queue-20231207170751084400000001\",\"bucket\":{\"name\":\"scribd-data-warehouse-dev\",\"ownerIdentity\":{\"principalId\":\"A1FIHS1B0BWUTQ\"},\"arn\":\"arn:aws:s3:::scribd-data-warehouse-dev\"},\"object\":{\"key\":\"databases/airbyte/faker_users/ds%3D2024-01-25/1706216212007_0.parquet\",\"size\":143785,\"eTag\":\"67165dca52a1089d312e19c3ddf1e342-1\",\"versionId\":\"3v567TKlEQF5IBoeXrFBRiRX8vY.bY1m\",\"sequencer\":\"0065B2CB162FC1AC3B\"}}}]}"#;
+        let body = r#"{\"Records\":[{\"eventVersion\":\"2.1\"}]}"#;
+        let message: SqsMessage = SqsMessage {
+            body: Some(body.to_string()),
+            ..Default::default()
+        };
+        let event: SqsEvent = SqsEvent {
+            records: vec![message],
+        };
+        let values = unwrap_sns_payload(&event.records);
+        assert_eq!(values.len(), event.records.len());
+        assert_eq!(Some(r#"{"eventVersion":"2.1"}"#), values[0].body.as_deref());
     }
 }

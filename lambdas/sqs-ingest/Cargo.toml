@@ -8,12 +8,12 @@ homepage.workspace = true
 [dependencies]
 lambda_runtime = { version = "0.11" }
 oxbow = { path = "../../crates/oxbow" }
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
 chrono = { workspace = true }
 deltalake = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

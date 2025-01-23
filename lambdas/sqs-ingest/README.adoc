@@ -45,4 +45,8 @@ image::diagram.png[Flow]
 |
 | Set to the DynamoDB table used for locking, required for safe concurrent writes.
 
+| `UNWRAP_SNS_ENVELOPE`
+| _null_
+| Should only be set if messages are first passing through SNS -> SQS. Ensure "raw delivery" is enabled on the topic subscription!
+
 |===

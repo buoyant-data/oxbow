@@ -25,6 +25,7 @@ deltalake = { git = "https://github.com/buoyant-data/delta-rs", branch = "defaul
 #deltalake = { path = "../../delta-io/delta-rs/crates/deltalake", features = ["s3", "json", "datafusion"]}
 tokio = { version = "=1", features = ["macros"] }
 regex = "=1"
+serde = "1"
 serde_json = "=1"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "tracing-log"] }

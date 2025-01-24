@@ -83,8 +83,7 @@ fn unwrap_sns_payload(records: &[SqsMessage]) -> Vec<SqsMessage> {
     for record in records {
         if let Some(body) = record.body.as_ref() {
             trace!("Attempting to unwrap the contents of nested JSON: {body}");
-            let wrapped = json_unescape(body).expect("Failed to unescape the body of the message");
-            let nested: SNSWrapper = serde_json::from_str(&wrapped).expect(
+            let nested: SNSWrapper = serde_json::from_str(body).expect(
                 "Failed to unpack SNS
 messages, this could be a misconfiguration and there is no SNS envelope or raw_delivery has not
 been set",
@@ -99,12 +98,6 @@ been set",
         }
     }
     unpacked
-}
-
-/// SNS likes to wrap everything in double
-// <https://stackoverflow.com/a/68996403>
-fn json_unescape(s: &str) -> serde_json::Result<String> {
-    serde_json::from_str(&format!("\"{}\"", s))
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,7 +138,7 @@ mod tests {
     fn test_unwrap_sns() {
         // This is an example of what a full message can look like
         //let body = r#"{\"Records\":[{\"eventVersion\":\"2.1\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"us-east-2\",\"eventTime\":\"2024-01-25T20:57:23.379Z\",\"eventName\":\"ObjectCreated:CompleteMultipartUpload\",\"userIdentity\":{\"principalId\":\"AWS:AROAU7FUYKEVYG4GF4IAV:s3-replication\"},\"requestParameters\":{\"sourceIPAddress\":\"10.0.153.194\"},\"responseElements\":{\"x-amz-request-id\":\"RYAX8R8CB6FF1MQN\",\"x-amz-id-2\":\"uLUt4C/TfjwvpObPlTnrWYjOIPH1YT1yJ8jZjqRyLIuTLOxGSkNgKc2Hd1/O7wTP2cd3u59lRtVYrU4ECizehRYw0NGNlL5b\"},\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"tf-s3-queue-20231207170751084400000001\",\"bucket\":{\"name\":\"scribd-data-warehouse-dev\",\"ownerIdentity\":{\"principalId\":\"A1FIHS1B0BWUTQ\"},\"arn\":\"arn:aws:s3:::scribd-data-warehouse-dev\"},\"object\":{\"key\":\"databases/airbyte/faker_users/ds%3D2024-01-25/1706216212007_0.parquet\",\"size\":143785,\"eTag\":\"67165dca52a1089d312e19c3ddf1e342-1\",\"versionId\":\"3v567TKlEQF5IBoeXrFBRiRX8vY.bY1m\",\"sequencer\":\"0065B2CB162FC1AC3B\"}}}]}"#;
-        let body = r#"{\"Records\":[{\"eventVersion\":\"2.1\"}]}"#;
+        let body = r#"{"Records":[{"eventVersion":"2.1"}]}"#;
         let message: SqsMessage = SqsMessage {
             body: Some(body.to_string()),
             ..Default::default()

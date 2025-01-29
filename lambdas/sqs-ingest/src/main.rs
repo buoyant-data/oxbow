@@ -55,13 +55,6 @@ async fn main() -> Result<(), Error> {
 
     let _ =
         env::var("DELTA_TABLE_URI").expect("The `DELTA_TABLE_URI` must be set in the environment");
-    match env::var("DYNAMO_LOCK_TABLE_NAME") {
-        Ok(_) => {}
-        Err(_) => {
-            warn!("sqs-ingest SHOULD have `DYNAMO_LOCK_TABLE_NAME` set to a valid name, and should have AWS_S3_LOCKING_PROVIDER=dynamodb set so that concurrent writes can be performed safely.");
-        }
-    }
-
     info!("Starting sqs-ingest");
 
     run(service_fn(function_handler)).await

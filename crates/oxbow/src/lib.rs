@@ -280,18 +280,18 @@ async fn metadata_actions_for(
 
         let file_schema =
             fetch_parquet_schema(table.object_store().clone(), last_file.clone()).await?;
-        let mut new_schema: Vec<StructField> = table_schema.fields().into_iter().cloned().collect();
+        let mut new_schema: Vec<StructField> = table_schema.fields().cloned().collect();
 
         for file_field in file_schema.fields() {
             let name = file_field.name();
             // If the table's schema doesn't have the field, add to our new schema
             if table_schema.index_of(name).is_none() {
                 debug!("Found a new column `{name}` which will be added");
+                let coerced = coerce_field(file_field.clone());
                 new_schema.push(StructField::new(
                     name.to_string(),
                     // These types can have timestmaps in them, so coerce them properly
-                    // XXX broken
-                    DataType::STRING, //coerce_field(file_field.clone()),
+                    deltalake::kernel::DataType::try_from(coerced.data_type())?,
                     true,
                 ));
             }

@@ -31,18 +31,26 @@ image::diagram.png[Flow]
 
 | `RUST_LOG`
 | `error`
-| Set the log level, e.g. `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `oxbow=debug`
+| Set the log level, e.g. `trace`, `debug`, `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `sqs-ingest=debug`
 
 | `DELTA_TABLE_URI`
 |
-| Set to the `s3://` URL of the Delta table which should be appended
+| **Required:** Set to the `s3://` URL of the Delta table which should be appended
+
+| `BUFFER_MORE_QUEUE_URL`
+|
+| Set to the SQS queue URL that triggered the function to buffer more messages per-invocation
+
+| `BUFFER_MORE_MESSAGES`
+| _0_
+| Set to an integer value of the number of _additional_ messages to consume from SQS. This setting can be used to make sqs-ingest retrieve more messages than those it was triggered with, this can help increase the number of messages written to S3 per-Lambda invocation.
 
 | `AWS_S3_LOCKING_PROVIDER`
-|
+| _null_
 | Set to `dynamodb` to enable safe concurrent writes to the table
 
 | `DYNAMO_LOCK_TABLE_NAME`
-|
+| _null_
 | Set to the DynamoDB table used for locking, required for safe concurrent writes.
 
 | `UNWRAP_SNS_ENVELOPE`

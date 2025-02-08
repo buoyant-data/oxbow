@@ -14,21 +14,63 @@ use std::env;
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
-    debug!("payload received: {:?}", event.payload.records);
 
-    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
-        Ok(_) => unwrap_sns_payload(&event.payload.records),
-        Err(_) => event.payload.records,
-    };
+    // Hold onto the instant that the function started in order to attempt to exit on time.
+    let fn_start = std::time::Instant::now();
+    trace!("payload received: {:?}", event.payload.records);
 
-    let values = extract_json_from_records(&records);
-    debug!("JSON pulled out: {values:?}");
+    let config = aws_config::from_env().load().await;
+    let sqs_client = aws_sdk_sqs::Client::new(&config);
+    // How many more messages should sqs-ingest try to consume?
+    let mut more_count = 0;
+    // Millis to allow for consuming more messages
+    let more_deadline_ms: u128 = (event.context.deadline / 2).into();
+    // records should contain the raw deserialized JSON payload that was sent through SQS. It
+    // should be "fit" for writing to Delta
+    let mut records: Vec<String> = vec![];
 
-    if !values.is_empty() {
+    if let Ok(how_many_more) = std::env::var("BUFFER_MORE_MESSAGES") {
+        more_count = how_many_more
+            .parse()
+            .expect("The value of BUFFER_MORE_MESSAGES cannot be coerced into an int :thinking:");
+        debug!("sqs-ingest configured to consume an additional {more_count} messages from SQS");
+        debug!("sqs-ingest will attempt to retrieve {more_count} messages in no more than {more_deadline_ms}ms to avoid timing out the function");
+    }
+
+    if more_count > 0 {
+        if let Ok(queue_url) = std::env::var("BUFFER_MORE_QUEUE_URL") {
+            let mut completed = false;
+            let mut fetched = 0;
+
+            while !completed {
+                let receive = sqs_client
+                    .receive_message()
+                    .max_number_of_messages(10)
+                    .queue_url(queue_url.clone())
+                    .send()
+                    .await?;
+                records.append(&mut extract_json_from_sqs_direct(
+                    receive.messages.unwrap_or_default(),
+                ));
+
+                fetched += 1;
+                completed =
+                    (fetched >= more_count) || (fn_start.elapsed().as_millis() >= more_deadline_ms);
+            }
+        } else {
+            error!("The function cannot buffer more messages without a BUFFER_MORE_QUEUE_URL! Only writing messages that triggered the Lambda");
+        }
+    }
+
+    // Add the messages that actually triggered this function invocation
+    records.append(&mut extract_json_from_records(&event.payload.records));
+
+    if !records.is_empty() {
         let table = oxbow::lock::open_table(&table_uri).await?;
-        match append_values(table, values.as_slice()).await {
+
+        match append_values(table, records.as_slice()).await {
             Ok(table) => {
-                debug!("Appended values to: {table:?}");
+                debug!("Appended {} values to: {table:?}", records.len());
             }
             Err(e) => {
                 error!("Failed to append the values to configured Delta table: {e:?}");
@@ -38,6 +80,11 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     } else {
         error!("An empty payload was extracted which doesn't seem right!");
     }
+
+    debug!(
+        "sqs-ingest completed its work in {}ms",
+        fn_start.elapsed().as_millis()
+    );
 
     Ok(())
 }
@@ -60,37 +107,53 @@ async fn main() -> Result<(), Error> {
     run(service_fn(function_handler)).await
 }
 
+/// Extract and deserialize the JSON from messages which were directly consumed from SQS rather
+/// than those received via Lambda triggering.
+///
+/// This corresponds to the messages consumed from BUFFER_MORE_QUEUE_URL
+fn extract_json_from_sqs_direct(messages: Vec<aws_sdk_sqs::types::Message>) -> Vec<String> {
+    if inside_sns() {
+        messages
+            .iter()
+            .filter(|m| m.body().is_some())
+            .map(|m| m.body().as_ref().unwrap().to_string())
+            .map(|b| {
+                let value: SNSWrapper =
+                    serde_json::from_str(&b).expect("Failed to deserialize SNS payload as JSON");
+                value.to_vec()
+            })
+            .flatten()
+            .collect::<Vec<String>>()
+    } else {
+        messages
+            .iter()
+            .filter(|m| m.body().is_some())
+            .map(|m| m.body().as_ref().unwrap().to_string())
+            .collect::<Vec<String>>()
+    }
+}
+
 /// Convert the `body` payloads from [SqsMessage] entities into JSONL
 /// which can be passed into the [oxbow::write::append_values] function
 fn extract_json_from_records(records: &[SqsMessage]) -> Vec<String> {
-    records
-        .iter()
-        .filter(|m| m.body.is_some())
-        .map(|m| m.body.as_ref().unwrap().clone())
-        .collect::<Vec<String>>()
-}
-
-/// SNS cannot help but JSON encode all its payloads so sometimes we must unwrap it.
-fn unwrap_sns_payload(records: &[SqsMessage]) -> Vec<SqsMessage> {
-    let mut unpacked = vec![];
-    for record in records {
-        if let Some(body) = record.body.as_ref() {
-            trace!("Attempting to unwrap the contents of nested JSON: {body}");
-            let nested: SNSWrapper = serde_json::from_str(body).expect(
-                "Failed to unpack SNS
-messages, this could be a misconfiguration and there is no SNS envelope or raw_delivery has not
-been set",
-            );
-            for body in nested.records {
-                let message: SqsMessage = SqsMessage {
-                    body: Some(serde_json::to_string(&body).expect("Failed to reserialize JSON")),
-                    ..Default::default()
-                };
-                unpacked.push(message);
-            }
-        }
+    if inside_sns() {
+        records
+            .iter()
+            .filter(|m| m.body.is_some())
+            .map(|m| {
+                let value: SNSWrapper = serde_json::from_str(m.body.as_ref().unwrap())
+                    .expect("Failed to deserialize SNS payload as JSON");
+                value.to_vec()
+            })
+            .flatten()
+            .collect::<Vec<String>>()
+    } else {
+        records
+            .iter()
+            .filter(|m| m.body.is_some())
+            .map(|m| m.body.as_ref().unwrap().clone())
+            .collect::<Vec<String>>()
     }
-    unpacked
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,10 +162,64 @@ struct SNSWrapper {
     records: Vec<serde_json::Value>,
 }
 
+impl SNSWrapper {
+    /// to_vec() will handle converting all the deserialized JSON inside the wrapper back into
+    /// strings for passing deeper into oxbow
+    fn to_vec(&self) -> Vec<String> {
+        self.records
+            .iter()
+            .map(|v| serde_json::to_string(&v).expect("Failed to reserialize SNS JSON"))
+            .collect()
+    }
+}
+
+/// Return true if the function expecs an SNS envelope
+fn inside_sns() -> bool {
+    std::env::var("UNWRAP_SNS_ENVELOPE").is_ok()
+}
+
+/// These tests are for the BufferMore functionality
+#[cfg(test)]
+mod buffer_more_tests {
+    use super::*;
+
+    use aws_sdk_sqs::types::Message;
+    use serial_test::serial;
+
+    #[serial]
+    #[test]
+    fn test_extract_direct() {
+        let message = Message::builder().body("hello").build();
+
+        let res = extract_json_from_sqs_direct(vec![message]);
+        assert_eq!(res, vec!["hello".to_string()]);
+    }
+
+    #[serial]
+    #[test]
+    fn test_extract_direct_with_sns() {
+        let body = r#"{"Records":[{"eventVersion":"2.1"}]}"#;
+        let message = Message::builder().body(body).build();
+
+        unsafe {
+            std::env::set_var("UNWRAP_SNS_ENVELOPE", "true");
+        }
+
+        let res = extract_json_from_sqs_direct(vec![message]);
+
+        unsafe {
+            std::env::remove_var("UNWRAP_SNS_ENVELOPE");
+        }
+        assert_eq!(res, vec![r#"{"eventVersion":"2.1"}"#]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
+    #[serial]
     #[test]
     fn test_extract_data() {
         let buf = r#"{
@@ -127,6 +244,7 @@ mod tests {
         assert_eq!(values, expected);
     }
 
+    #[serial]
     #[test]
     fn test_unwrap_sns() {
         // This is an example of what a full message can look like
@@ -139,8 +257,16 @@ mod tests {
         let event: SqsEvent = SqsEvent {
             records: vec![message],
         };
-        let values = unwrap_sns_payload(&event.records);
-        assert_eq!(values.len(), event.records.len());
-        assert_eq!(Some(r#"{"eventVersion":"2.1"}"#), values[0].body.as_deref());
+
+        unsafe {
+            std::env::set_var("UNWRAP_SNS_ENVELOPE", "true");
+        }
+
+        let values = extract_json_from_records(&event.records);
+
+        unsafe {
+            std::env::remove_var("UNWRAP_SNS_ENVELOPE");
+        }
+        assert_eq!(values, vec![r#"{"eventVersion":"2.1"}"#]);
     }
 }

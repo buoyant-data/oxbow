@@ -3,6 +3,7 @@
 /// and appending them to the configured Delta table
 ///
 use aws_lambda_events::event::sqs::{SqsEvent, SqsMessage};
+use aws_sdk_sqs::types::DeleteMessageBatchRequestEntry;
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use serde::Deserialize;
 use tracing::log::*;
@@ -28,6 +29,11 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     // records should contain the raw deserialized JSON payload that was sent through SQS. It
     // should be "fit" for writing to Delta
     let mut records: Vec<String> = vec![];
+    // Messages to delete from SQS if manually fetched
+    //
+    // This needs to be stored until after the successful write to Delta to ensure message
+    // persistence
+    let mut received = vec![];
 
     if let Ok(how_many_more) = std::env::var("BUFFER_MORE_MESSAGES") {
         more_count = how_many_more
@@ -49,6 +55,16 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                     .queue_url(queue_url.clone())
                     .send()
                     .await?;
+
+                for message in receive.messages.clone().unwrap_or_default() {
+                    received.push(
+                        DeleteMessageBatchRequestEntry::builder()
+                            .set_id(message.message_id)
+                            .set_receipt_handle(message.receipt_handle)
+                            .build()?,
+                    );
+                }
+
                 records.append(&mut extract_json_from_sqs_direct(
                     receive.messages.unwrap_or_default(),
                 ));
@@ -79,6 +95,23 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         }
     } else {
         error!("An empty payload was extracted which doesn't seem right!");
+    }
+
+    if let Ok(queue_url) = std::env::var("BUFFER_MORE_QUEUE_URL") {
+        if !received.is_empty() {
+            info!(
+                "Marking {} messages from SQS which were buffered as deleted",
+                received.len()
+            );
+            for batch in received.chunks(10) {
+                let _ = sqs_client
+                    .delete_message_batch()
+                    .queue_url(queue_url.clone())
+                    .set_entries(Some(batch.to_vec()))
+                    .send()
+                    .await?;
+            }
+        }
     }
 
     debug!(

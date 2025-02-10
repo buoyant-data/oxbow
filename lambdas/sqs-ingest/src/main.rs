@@ -65,6 +65,11 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                     );
                 }
 
+                if receive.messages.is_none() {
+                    debug!("Empty receive off SQS, continuing on");
+                    break;
+                }
+
                 records.append(&mut extract_json_from_sqs_direct(
                     receive.messages.unwrap_or_default(),
                 ));

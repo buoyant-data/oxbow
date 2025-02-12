@@ -11,21 +11,30 @@ use tracing::log::*;
 use oxbow::write::*;
 
 use std::env;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
+    let fn_start_since_epoch_ms: u128 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Failed to get a system time after unix epoch")
+        .as_millis();
 
     // Hold onto the instant that the function started in order to attempt to exit on time.
-    let fn_start = std::time::Instant::now();
+    let fn_start = Instant::now();
     trace!("payload received: {:?}", event.payload.records);
 
     let config = aws_config::from_env().load().await;
     let sqs_client = aws_sdk_sqs::Client::new(&config);
     // How many more messages should sqs-ingest try to consume?
     let mut more_count = 0;
+    debug!(
+        "Context deadline in milliseconds since epoch is: {}",
+        event.context.deadline
+    );
     // Millis to allow for consuming more messages
-    let more_deadline_ms: u128 = (event.context.deadline / 2).into();
+    let more_deadline_ms: u128 = ((event.context.deadline as u128) - fn_start_since_epoch_ms) / 2;
     // records should contain the raw deserialized JSON payload that was sent through SQS. It
     // should be "fit" for writing to Delta
     let mut records: Vec<String> = vec![];
@@ -49,12 +58,26 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
             let mut fetched = 0;
 
             while !completed {
+                let visibility_timeout: i32 = (more_deadline_ms / 1000).try_into()?;
+                debug!("Fetching things from SQS with a {visibility_timeout}s visibility timeout");
+
                 let receive = sqs_client
                     .receive_message()
                     .max_number_of_messages(10)
+                    // Set the visibility timeout to the timeout of the function to ensure that
+                    // messages are not made visible befoore the function exits
+                    .visibility_timeout(visibility_timeout)
+                    // Enable a smol long poll to receive messages
+                    .wait_time_seconds(1)
                     .queue_url(queue_url.clone())
                     .send()
-                    .await?;
+                    .await;
+
+                if receive.is_err() {
+                    error!("Received {receive:?} from SQS, not buffering more messages");
+                    break;
+                }
+                let receive = receive.unwrap();
 
                 for message in receive.messages.clone().unwrap_or_default() {
                     received.push(

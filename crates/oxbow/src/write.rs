@@ -37,6 +37,7 @@ pub async fn append_values(
                 }
                 Err(e) => {
                     error!("Failed to write a data file: {e:?}");
+                    return Err(e.into());
                 }
             }
         }

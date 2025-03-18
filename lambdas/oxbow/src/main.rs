@@ -75,16 +75,6 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                             "Successfully appended version {} to table at {}",
                             version, location
                         );
-
-                        if should_checkpoint(version) {
-                            info!("Creating a checkpoint for {}", location);
-                            match deltalake::checkpoints::create_checkpoint(&table, None).await {
-                                Ok(_) => info!("Successfully created checkpoint"),
-                                Err(e) => {
-                                    error!("Failed to create checkpoint for {location}: {e:?}")
-                                }
-                            }
-                        }
                     }
                     Err(err) => {
                         error!("Failed to append to the table {}: {:?}", location, err);
@@ -119,21 +109,5 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
     Ok("[]".into())
 }
 
-/// Determine whether the version qualitfies for checkpointing
-fn should_checkpoint(version: i64) -> bool {
-    (version > 0) && (version % 10 == 0)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_should_checkpoint() {
-        assert!(should_checkpoint(10));
-        assert!(should_checkpoint(100));
-        assert!(!should_checkpoint(1));
-        assert!(!should_checkpoint(11));
-        assert!(!should_checkpoint(0));
-    }
-}
+mod tests {}

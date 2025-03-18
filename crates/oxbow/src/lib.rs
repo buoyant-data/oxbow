@@ -214,11 +214,12 @@ pub async fn create_table_with(
 
 /// Commit the given [Action]s to the [DeltaTable]
 pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
+    use deltalake::operations::transaction::{CommitBuilder, CommitProperties};
     if actions.is_empty() {
         return Ok(table.version());
     }
-
-    let pre_commit = deltalake::operations::transaction::CommitBuilder::default()
+    let commit = CommitProperties::default();
+    let pre_commit = CommitBuilder::from(commit)
         .with_actions(actions.to_vec())
         .build(
             Some(table.snapshot()?),
@@ -1032,6 +1033,48 @@ mod tests {
         let result = commit_to_table(&[], &mut table).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), initial_version);
+    }
+
+    #[tokio::test]
+    async fn test_commit_to_table_make_checkpoint() -> DeltaResult<()> {
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+        let files = discover_parquet_files(store.object_store(None).clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+        // Creating the table with one of the discovered files, so the remaining three should be
+        // added later
+        let mut table = create_table_with(&[files[0].clone()], store.clone())
+            .await
+            .expect("Failed to create table");
+        let initial_version = table.version();
+        assert_eq!(0, initial_version);
+
+        let mods = TableMods::new(&files, &[files[0].clone()]);
+        let actions = actions_for(&mods, &table, false)
+            .await
+            .expect("Failed to curate actions");
+
+        for _ in 0..101 {
+            let _ = commit_to_table(&actions, &table).await?;
+            table.load().await?;
+        }
+        assert_eq!(table.version(), 101);
+
+        if let Some(state) = table.state.as_ref() {
+            // The default is expected to be 100
+            assert_eq!(100, state.table_config().checkpoint_interval());
+        }
+
+        use deltalake::storage::Path;
+        let checkpoint = table
+            .object_store()
+            .head(&Path::from("_delta_log/_last_checkpoint"))
+            .await?;
+
+        assert_ne!(0, checkpoint.size);
+        Ok(())
     }
 
     #[tokio::test]

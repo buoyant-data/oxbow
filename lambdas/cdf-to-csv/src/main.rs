@@ -36,7 +36,7 @@ async fn main() -> Result<(), Error> {
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     debug!("Receiving event: {:?}", event);
 
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2024_03_28()).await;
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_01_17()).await;
     let client = aws_sdk_s3::Client::new(&config);
 
     let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
@@ -52,8 +52,18 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
             RecordType::Parquet => {
                 process_parquet_file(
                     &client,
-                    &record.s3.bucket.name.as_ref().unwrap(),
-                    &record.s3.object.url_decoded_key.as_ref().unwrap(),
+                    record
+                        .s3
+                        .bucket
+                        .name
+                        .as_ref()
+                        .expect("Failed to retrieve a bucket name"),
+                    record
+                        .s3
+                        .object
+                        .url_decoded_key
+                        .as_ref()
+                        .expect("Failed to get URL decoded key"),
                 )
                 .await
                 .map_err(|e| {
@@ -66,7 +76,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 })?;
             }
             RecordType::Unknown => {
-                error!("cdf-to-csv was invoked for a file with an unknown extension! Ignoring: {record:?}");
+                info!("cdf-to-csv was invoked for a file with an unknown extension! Ignoring: {record:?}");
             }
         }
     }
@@ -107,7 +117,7 @@ async fn process_parquet_file(
     let basename = basename_from_key(key);
 
     let change_type_index =
-        column_index(&reader, CHANGE_TYPE_COLUMN).ok_or_else(|| "_change_type column not")?;
+        column_index(&reader, CHANGE_TYPE_COLUMN).ok_or("_change_type column not")?;
     let primary_key_column = std::env::var("DELETE_PRIMARY_KEY")
         .ok()
         .and_then(|name| column_index(&reader, &name));
@@ -155,7 +165,7 @@ async fn process_parquet_file(
                         .get_column_iter()
                         .skip(primary_key_column)
                         .next()
-                        .ok_or_else(|| "cannot get primary key, row does not have enough columns")?
+                        .ok_or("cannot get primary key, row does not have enough columns")?
                         .1
                         .to_mysql_value()
                         .map_err(|e| {
@@ -188,7 +198,7 @@ fn column_index(parquet: &dyn FileReader, column_name: &str) -> Option<usize> {
         .map(|(idx, _)| idx)
 }
 
-fn basename_from_key(key: &String) -> String {
+fn basename_from_key(key: &str) -> String {
     key.split('/')
         .last()
         .unwrap()

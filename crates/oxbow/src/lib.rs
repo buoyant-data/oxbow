@@ -440,22 +440,31 @@ async fn load_parquet_metadata(
 fn coerce_field(
     field: deltalake::arrow::datatypes::FieldRef,
 ) -> deltalake::arrow::datatypes::FieldRef {
+    use deltalake::arrow::datatypes::*;
     match field.data_type() {
-        deltalake::arrow::datatypes::DataType::Timestamp(unit, tz) => match unit {
-            deltalake::arrow::datatypes::TimeUnit::Millisecond => {
-                warn!("I have been asked to create a table with a Timestamp(millis) column ({}) that I cannot handle. Cowardly setting the Delta schema to pretend it is a Timestamp(micros)", field.name());
-                let field = deltalake::arrow::datatypes::Field::new(
-                    field.name(),
-                    deltalake::arrow::datatypes::DataType::Timestamp(
-                        deltalake::arrow::datatypes::TimeUnit::Microsecond,
-                        tz.clone(),
-                    ),
-                    field.is_nullable(),
-                );
-                return Arc::new(field);
+        DataType::Timestamp(unit, tz) => {
+            match unit {
+                TimeUnit::Nanosecond => {
+                    warn!("Given a nanosecond precision which we will cowardly pretend is microseconds");
+                    let field = Field::new(
+                        field.name(),
+                        DataType::Timestamp(TimeUnit::Microsecond, tz.clone()),
+                        field.is_nullable(),
+                    );
+                    return Arc::new(field);
+                }
+                TimeUnit::Millisecond => {
+                    warn!("I have been asked to create a table with a Timestamp(millis) column ({}) that I cannot handle. Cowardly setting the Delta schema to pretend it is a Timestamp(micros)", field.name());
+                    let field = Field::new(
+                        field.name(),
+                        DataType::Timestamp(TimeUnit::Microsecond, tz.clone()),
+                        field.is_nullable(),
+                    );
+                    return Arc::new(field);
+                }
+                _ => {}
             }
-            _ => {}
-        },
+        }
         _ => {}
     };
     field.clone()

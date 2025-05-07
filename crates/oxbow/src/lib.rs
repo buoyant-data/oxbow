@@ -493,18 +493,20 @@ mod tests {
         /// Return a simple test table for based on the fixtures
         ///
         /// The table that is returned cannot be reloaded since the tempdir is dropped
-        pub(crate) async fn test_table() -> DeltaTable {
-            let (_tempdir, store) =
-                create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+        pub(crate) async fn test_table() -> (tempfile::TempDir, DeltaTable) {
+            let (td, store) = create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
 
             let files = discover_parquet_files(store.object_store(None).clone())
                 .await
                 .expect("Failed to discover parquet files");
             assert_eq!(files.len(), 4, "No files discovered");
 
-            create_table_with(&files, store.clone())
-                .await
-                .expect("Failed to create table")
+            (
+                td,
+                create_table_with(&files, store.clone())
+                    .await
+                    .expect("Failed to create table"),
+            )
         }
 
         pub(crate) fn paths_to_objectmetas(
@@ -933,7 +935,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_actions_for_with_redundant_files() {
-        let table = util::test_table().await;
+        let (_tempdir, table) = util::test_table().await;
         let files = util::paths_to_objectmetas(table.get_files_iter().unwrap());
         let mods = TableMods::new(&files, &vec![]);
 
@@ -949,7 +951,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_actions_for_with_removes() -> DeltaResult<()> {
-        let table = util::test_table().await;
+        let (_tempdir, table) = util::test_table().await;
         let files = util::paths_to_objectmetas(table.get_files_iter()?);
         let mods = TableMods::new(&vec![], &files);
 
@@ -1005,7 +1007,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_actions_for_with_redundant_removes() -> DeltaResult<()> {
-        let table = util::test_table().await;
+        let (_tempdir, table) = util::test_table().await;
         let files = util::paths_to_objectmetas(table.get_files_iter()?);
         let mut redundant_removes = files.clone();
         redundant_removes.append(&mut files.clone());
@@ -1025,7 +1027,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tablemods_uniqueness() -> DeltaResult<()> {
-        let table = util::test_table().await;
+        let (_tempdir, table) = util::test_table().await;
         let files = util::paths_to_objectmetas(table.get_files_iter()?);
         let mut redundant_removes = files.clone();
         redundant_removes.append(&mut files.clone());
@@ -1044,9 +1046,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_with_no_actions() {
-        let mut table = util::test_table().await;
+        let (_tempdir, table) = util::test_table().await;
         let initial_version = table.version();
-        let result = commit_to_table(&[], &mut table).await;
+        let result = commit_to_table(&[], &table).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), initial_version);
     }
@@ -1094,27 +1096,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_commit_with_remove_actions() {
-        let mut table = util::test_table().await;
+    async fn test_commit_with_remove_actions() -> DeltaResult<()> {
+        let (_tempdir, table) = util::test_table().await;
         let initial_version = table.version();
 
-        let files = util::paths_to_objectmetas(table.get_files_iter().unwrap());
-        let mods = TableMods::new(&vec![], &files);
-        let actions = actions_for(&mods, &table, false)
-            .await
-            .expect("Failed to curate actions");
+        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let mods = TableMods::new(&[], &files);
+        let actions = actions_for(&mods, &table, false).await?;
         assert_eq!(
             actions.len(),
             4,
             "Expected an add action for every new file discovered"
         );
 
-        let result = commit_to_table(&actions, &mut table).await.unwrap();
+        let result = commit_to_table(&actions, &table).await?;
         assert_eq!(
             result,
             initial_version + 1,
             "Should have incremented the version"
         );
+        Ok(())
     }
 
     #[tokio::test]

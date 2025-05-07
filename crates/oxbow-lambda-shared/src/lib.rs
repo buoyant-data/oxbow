@@ -190,7 +190,7 @@ fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMe
         None => Path::from(location),
     };
     ObjectMeta {
-        size: s3object.size.unwrap_or(0) as usize,
+        size: s3object.size.unwrap_or(0) as u64,
         last_modified: Utc::now(),
         e_tag: None,
         version: None,

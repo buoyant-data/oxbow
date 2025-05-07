@@ -182,7 +182,7 @@ mod tests {
             assert_eq!(100, state.table_config().checkpoint_interval());
         }
 
-        use deltalake::storage::Path;
+        use deltalake::Path;
         let checkpoint = table
             .object_store()
             .head(&Path::from("_delta_log/_last_checkpoint"))

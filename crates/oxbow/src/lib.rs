@@ -4,6 +4,7 @@
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::kernel::models::{Schema, StructField};
 use deltalake::kernel::*;
+use deltalake::logstore::ObjectStoreRef;
 use deltalake::logstore::{logstore_for, LogStoreRef};
 use deltalake::operations::create::CreateBuilder;
 use deltalake::parquet::arrow::async_reader::{
@@ -11,7 +12,7 @@ use deltalake::parquet::arrow::async_reader::{
 };
 use deltalake::parquet::file::metadata::ParquetMetaData;
 use deltalake::protocol::*;
-use deltalake::storage::{ObjectStore, ObjectStoreRef};
+use deltalake::ObjectStore;
 use deltalake::{DeltaResult, DeltaTable, DeltaTableError, ObjectMeta};
 use futures::StreamExt;
 use tracing::log::*;
@@ -168,7 +169,8 @@ pub async fn create_table_with(
         "Using the smallest parquet file for schema inference: {:?}",
         smallest.location
     );
-    let file_reader = ParquetObjectReader::new(store.object_store(None).clone(), smallest.clone());
+    let file_reader =
+        ParquetObjectReader::new(store.object_store(None).clone(), smallest.location.clone());
     let arrow_schema = ParquetRecordBatchStreamBuilder::new(file_reader)
         .await?
         .build()?
@@ -214,7 +216,7 @@ pub async fn create_table_with(
 
 /// Commit the given [Action]s to the [DeltaTable]
 pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
-    use deltalake::operations::transaction::{CommitBuilder, CommitProperties};
+    use deltalake::kernel::transaction::{CommitBuilder, CommitProperties};
     if actions.is_empty() {
         return Ok(table.version());
     }
@@ -429,7 +431,7 @@ async fn load_parquet_metadata(
     store: Arc<dyn ObjectStore>,
     file: ObjectMeta,
 ) -> DeltaResult<Arc<ParquetMetaData>> {
-    let reader = ParquetObjectReader::new(store.clone(), file);
+    let reader = ParquetObjectReader::new(store.clone(), file.location.clone());
     let builder = ParquetRecordBatchStreamBuilder::new(reader).await.unwrap();
     let metadata = builder.metadata();
 
@@ -567,7 +569,8 @@ mod tests {
             let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
             (
                 dir,
-                logstore_for(url, HashMap::default(), None).expect("Failed to get store"),
+                logstore_for(url, HashMap::<String, String>::default(), None)
+                    .expect("Failed to get store"),
             )
         }
     }
@@ -576,7 +579,8 @@ mod tests {
     async fn discover_parquet_files_empty_dir() {
         let dir = tempfile::tempdir().expect("Failed to create a temporary directory");
         let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::default(), None).expect("Failed to get log store");
+        let store = logstore_for(url, HashMap::<String, String>::default(), None)
+            .expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
@@ -589,7 +593,8 @@ mod tests {
         let path = std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned")
             .expect("Failed to canonicalize");
         let url = Url::from_file_path(path).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::default(), None).expect("Failed to get log store");
+        let store = logstore_for(url, HashMap::<String, String>::default(), None)
+            .expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
@@ -811,7 +816,7 @@ mod tests {
         let files: Vec<ObjectMeta> = vec![];
         let store = logstore_for(
             Url::parse("s3://example/non-existent").unwrap(),
-            HashMap::default(),
+            HashMap::<String, String>::default(),
             None,
         )
         .expect("Failed to get store");
@@ -830,7 +835,8 @@ mod tests {
             std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
                 .expect("Failed to canonicalize");
         let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::default(), None).expect("Failed to get store");
+        let store = logstore_for(url, HashMap::<String, String>::default(), None)
+            .expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
@@ -880,7 +886,8 @@ mod tests {
             "../../tests/data/hive/deltatbl-partitioned",
         )?)
         .expect("Failed to parse");
-        let storage = logstore_for(url, HashMap::default(), None).expect("Failed to get store");
+        let storage = logstore_for(url, HashMap::<String, String>::default(), None)
+            .expect("Failed to get store");
         let meta = storage.object_store(None).head(&location).await.unwrap();
 
         let schema = fetch_parquet_schema(storage.object_store(None).clone(), meta)
@@ -1076,7 +1083,7 @@ mod tests {
             assert_eq!(100, state.table_config().checkpoint_interval());
         }
 
-        use deltalake::storage::Path;
+        use deltalake::Path;
         let checkpoint = table
             .object_store()
             .head(&Path::from("_delta_log/_last_checkpoint"))
@@ -1193,8 +1200,8 @@ mod tests {
         // The store that comes back is not properly prefixed to the delta table that this test
         // needs to work with
         let table_url = Url::from_file_path(&table_path).expect("Failed to parse local path");
-        let store =
-            logstore_for(table_url, HashMap::default(), None).expect("Failed to get object store");
+        let store = logstore_for(table_url, HashMap::<String, String>::default(), None)
+            .expect("Failed to get object store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await

@@ -2,11 +2,15 @@ use aws_config;
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
 use aws_sdk_s3;
+use deltalake::datafusion::prelude::*;
+use deltalake::delta_datafusion::DeltaCdfTableProvider;
+use deltalake::parquet::file::reader::FileReader;
+use deltalake::parquet::file::serialized_reader::SerializedFileReader;
+use deltalake::parquet::record::RowAccessor;
+use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use oxbow_lambda_shared::*;
-use parquet::file::reader::FileReader;
-use parquet::file::serialized_reader::SerializedFileReader;
-use parquet::record::RowAccessor;
+use std::sync::Arc;
 use tracing::log::*;
 
 mod mysql_value;
@@ -20,6 +24,7 @@ const DELETE: &str = "delete";
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    deltalake::aws::register_handlers(None);
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         // disable printing the name of the module in every log line.
@@ -33,51 +38,57 @@ async fn main() -> Result<(), Error> {
     run(service_fn(function_handler)).await
 }
 
-async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
+async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error> {
     debug!("Receiving event: {:?}", event);
 
     let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_01_17()).await;
     let client = aws_sdk_s3::Client::new(&config);
 
-    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
-        Ok(_) => s3_from_sns(event.payload)?,
-        Err(_) => s3_from_sqs(event.payload)?,
-    };
+    let triggers = triggers_from(event.payload)?;
+    debug!("Triggered by: {triggers:?}");
 
-    let records: Vec<S3EventRecord> = records_with_url_decoded_keys(&records);
-    debug!("processing records: {records:?}");
+    for trigger in triggers {
+        let mut should_process = false;
+        // Since the file triggers should include some other piece of information, only bother
+        // loading the table if there has been a transaction log modification
+        for change in trigger.changes() {
+            if let ChangeType::TransactionLog { version: _ } = change.what {
+                should_process = true;
+                break;
+            }
+        }
 
-    for record in records {
-        match suffix_from_record(&record) {
-            RecordType::Parquet => {
-                process_parquet_file(
-                    &client,
-                    record
-                        .s3
-                        .bucket
-                        .name
-                        .as_ref()
-                        .expect("Failed to retrieve a bucket name"),
-                    record
-                        .s3
-                        .object
-                        .url_decoded_key
-                        .as_ref()
-                        .expect("Failed to get URL decoded key"),
-                )
-                .await
-                .map_err(|e| {
-                    format!(
-                        "error while processing s3://{}/{}: {:?}",
-                        &record.s3.bucket.name.unwrap(),
-                        &record.s3.object.url_decoded_key.unwrap(),
-                        e
-                    )
-                })?;
+        if !should_process {
+            continue;
+        }
+
+        if let (Some(mut min), Some(max)) = (trigger.smallest_version(), trigger.largest_version())
+        {
+            let table = deltalake::open_table(trigger.location().as_str()).await?;
+            info!(
+                "Loaded a table for {} at version {}",
+                trigger.location().as_str(),
+                table.version()
+            );
+
+            // Min and max are the same when just one transaction is in the trigger, in that case,
+            // make min N-1
+            if min == max {
+                min = max - 1;
             }
-            RecordType::Unknown => {
-                info!("cdf-to-csv was invoked for a file with an unknown extension! Ignoring: {record:?}");
-            }
+
+            // Always look at the last version
+            let cdf = DeltaOps::from(table)
+                .load_cdf()
+                .with_starting_version(min)
+                .with_ending_version(max);
+            let ctx = SessionContext::new();
+            let provider = Arc::new(DeltaCdfTableProvider::try_new(cdf)?);
+            let df = ctx.read_table(provider)?;
+            df.show().await?;
+            // TODO: take this data frame and turn it into CSV files
+        } else {
+            warn!("Invoked but didn't find min/max trigger versions, something is fishy!");
         }
     }
     Ok(())

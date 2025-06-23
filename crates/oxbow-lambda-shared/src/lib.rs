@@ -11,6 +11,29 @@ use tracing::log::*;
 use oxbow::TableMods;
 use std::collections::HashMap;
 
+mod trigger;
+
+pub use trigger::*;
+
+/// Retrieve the [TableTrigger]s for the given event
+///
+/// This is a very high level abstraction and will appropriately handle the `UNWRAP_SNS_ENVELOPE`
+/// environment variable.
+pub fn triggers_from(sqs: SqsEvent) -> DeltaResult<Vec<TableTrigger>> {
+    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+        Ok(_) => {
+            debug!("UNWRAP_SNS_ENVELOPE was set in the environment, unpacking");
+            s3_from_sns(sqs)?
+        }
+        Err(_) => {
+            trace!("Using raw SQS events, not expecting there to have been SNS in the middle");
+            s3_from_sqs(sqs)?
+        }
+    };
+
+    TableTrigger::from_s3_records(&records_with_url_decoded_keys(&records))
+}
+
 ///
 /// Return wholly new [`S3EventRecord`] objects with their the [`S3Object`] `url_decoded_key`
 /// properly filled in

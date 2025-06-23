@@ -1,5 +1,5 @@
 use chrono::TimeZone;
-use parquet::record::Field;
+use deltalake::parquet::record::Field;
 use serde_json::Value as JsonValue;
 
 pub(crate) trait ToMysqlValue {
@@ -75,7 +75,7 @@ impl ToMysqlValue for Field {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parquet::data_type::{ByteArray, Decimal};
+    use deltalake::parquet::data_type::{ByteArray, Decimal};
 
     #[test]
     fn test_string() {

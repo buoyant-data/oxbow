@@ -9,9 +9,39 @@ endif::[]
 
 = CDF to CSV
 
-The `cdf-to-csv` is an S3 Event Notifications triggered Lambda whose responsibility is to read `.parquet` files and convert them to CSVs, so they can be imported via link:https://dev.mysql.com/doc/refman/8.4/en/load-data.html[`LOAD DATA`]
+The `cdf-to-csv` is an S3 Event Notifications triggered Lambda whose
+responsibility is to read a link:https://delta.io[Delta Lake] table's change
+data feed in order to produce CSV output for the changed rows which can be
+imported into other systems via
+link:https://dev.mysql.com/doc/refman/8.4/en/load-data.html[`LOAD DATA`] or
+`LOAD DATA FROM S3`
 
 toc::[]
+
+== Output schema
+
+Currently `cdf-to-csv` only supports insert/update files being generated. The
+lambda will rely on the prefix of the Delta table being modified. For example,
+if the source table is located at `s3://datalake/schemas/myschema/mytable` and
+the `CSV_OUTPUT_URL` is set to `s3://csvs/` then the prefix tree for output
+`.csv` files for table versions 3, 4, 5 should look like the following:
+
+[source]
+----
+s3://csvs/
+├── schemas
+│   ├── myshema
+│   │   ├── mytable
+│   │   │   ├── 3
+│   │   │   │   └── inserts
+│   │   │   │       ├── uuid_1.csv
+│   │   │   │       ├── uuid_2.csv
+│   │   │   ├── 4
+│   │   │   │   └── inserts
+│   │   │   │       ├── uuid_1.csv
+│   │   │   │       ├── uuid_2.csv
+│   │   │   ├── 5
+----
 
 
 == Environment Variables
@@ -20,25 +50,17 @@ toc::[]
 
 | Name | Default Value | Notes
 
-| `CSV_DELETE_PREFIX`
+| `CSV_OUTPUT_URL`
 |
-| Prefix for output CSV files with deleted rows (requires primary key set)
-
-| `CSV_MAX_LINES_PER_FILE`
-| 1000000
-| Maximum number of lines per CSV file
-
-| `CSV_OUTPUT_BUCKET`
-|
-| Bucket for output CSV files
-
-| `CSV_OUTPUT_PREFIX`
-|
-| Prefix for output CSV files with updated/inserted rows
+| Full destination URL for writing output CSV files, e.g. `s3://bucket/rootprefix`
 
 | `DELETE_PRIMARY_KEY`
 |
 | Optional primary key for delete CSV files
+
+| `CSV_DELETE_PREFIX`
+|
+| Prefix for output CSV files with deleted rows (requires primary key set)
 
 | `RUST_LOG`
 | `error`

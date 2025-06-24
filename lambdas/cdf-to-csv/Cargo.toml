@@ -6,15 +6,20 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-aws-config = "1.5.10"
-aws-sdk-s3 = "1.60.0"
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
 chrono = { workspace = true }
-csv = "1.3.1"
-lambda_runtime = { version = "0.11" }
+lambda_runtime = "0.14.2"
 deltalake = { workspace = true }
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
-serde_json = "1.0.140"
+object_store = { version = "0.12.1", features = ["cloud"]}
+serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+url = { workspace = true }
+
+csv = "1.3.1"
+oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+
+
+[dev-dependencies]
+futures = "*"

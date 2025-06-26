@@ -57,8 +57,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             // Creating a new [SessionContext] for every trigger to make sure the namespace inside
             // the context is unique to a triggered table
             let ctx = SessionContext::new();
-            let destination = Url::parse(&destination).expect("Failed to parse the CSV_OUTPUT_URL");
-            let (store, _path) = object_store::parse_url(&destination)
+            let store = object_store::aws::AmazonS3Builder::from_env()
+                .with_url(&destination)
+                .build()
                 .expect("Failed to create an output object_store");
 
             let table = deltalake::open_table(trigger.location().as_str()).await?;

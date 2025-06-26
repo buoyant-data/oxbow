@@ -189,12 +189,21 @@ pub fn s3_from_sns(event: SqsEvent) -> DeltaResult<Vec<S3EventRecord>> {
                         for r in s3_event.records.into_iter() {
                             records.push(r);
                         }
+                    } else {
+                        warn!(
+                            "Could not deserialize this message into an S3Event: {}",
+                            sns_event.message
+                        );
                     }
                 }
                 Err(e) => {
+                    //  This must return an error so that there is no data loss
                     error!("Failed to deserialize an SnsMessage: {e:?}");
+                    return Err(e.into());
                 }
             }
+        } else {
+            warn!("There was no body on an SNS message, huh?!");
         }
     }
     Ok(records)

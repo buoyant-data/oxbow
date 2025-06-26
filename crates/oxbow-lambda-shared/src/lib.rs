@@ -44,10 +44,6 @@ pub fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRe
 
     records
         .iter()
-        .filter(|record| match &record.s3.object.key {
-            None => true,
-            Some(key) => !key.contains("_delta_log"),
-        })
         .map(|record| {
             let mut replacement = record.clone();
             if let Some(key) = &replacement.s3.object.key {
@@ -80,6 +76,12 @@ pub fn objects_by_table(records: &[S3EventRecord]) -> HashMap<String, TableMods>
                 mods.insert(key.clone(), TableMods::default());
             }
             if let Some(objects) = mods.get_mut(&key) {
+                // only consider the file if it is not inside the _delta_log/
+                // for all intents and purposes this function should be ignoring those files should
+                // it be asked to group them
+                if om.location.as_ref().contains("_delta_log") {
+                    continue;
+                }
                 if let Some(event_name) = &record.event_name {
                     if event_name.starts_with("ObjectCreated") {
                         objects.add(om);
@@ -116,6 +118,12 @@ pub fn infer_log_path_from(path: &str) -> String {
                  * the delta table
                  */
                 if segment.find('=') >= Some(0) {
+                    break;
+                }
+                if segment == "_delta_log" {
+                    debug!(
+                        "`_delta_log` found in infer_log_path_from, omitting it and breaking out"
+                    );
                     break;
                 }
                 root.push(segment);
@@ -336,6 +344,13 @@ mod tests {
     }
 
     #[test]
+    fn infer_log_path_from_inside_delta_log() {
+        let object = "some/path/_delta_log/foo.checkpoint.parquet";
+        let expected = "some/path";
+        assert_eq!(expected, infer_log_path_from(object));
+    }
+
+    #[test]
     fn test_records_with_url_decoded_keys() {
         let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple-urlencoded.json")
             .expect("Failed to read file");
@@ -354,8 +369,7 @@ mod tests {
         assert_eq!(4, event.records.len());
 
         let records = records_with_url_decoded_keys(&event.records);
-        // Thec checkpoint file should be removewd
-        assert_eq!(3, records.len());
+        assert_eq!(4, records.len());
     }
 
     /**

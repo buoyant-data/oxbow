@@ -22,6 +22,7 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         Ok(_) => s3_from_sns(event.payload)?,
         Err(_) => s3_from_sqs(event.payload)?,
     };
+    debug!("Deserialized records into the following for segment: {records:?}");
     let segmented = segmented_by_prefix(&records)?;
     debug!("Segmented into the following keys: {:?}", segmented.keys());
 
@@ -107,6 +108,8 @@ fn segmented_by_prefix(
             if let Some(objects) = segments.get_mut(&key) {
                 objects.push(record.clone());
             }
+        } else {
+            error!("segmented_by_prefix() was triggered by an event without a bucket: {record:?}");
         }
     }
     Ok(segments)

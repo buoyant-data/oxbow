@@ -64,7 +64,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
 
             let table = deltalake::open_table(trigger.location().as_str()).await?;
             info!(
-                "Loaded a table for {} at version {}",
+                "Loaded a table for {} at version {:?}",
                 trigger.location().as_str(),
                 table.version()
             );

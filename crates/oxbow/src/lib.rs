@@ -1,19 +1,19 @@
-use deltalake::ObjectStore;
 ///
 /// The lib module contains the business logic of oxbow, regardless of the interface implementation
 ///
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
-use deltalake::kernel::models::{Schema, StructField};
+use deltalake::kernel::engine::arrow_conversion::TryFromArrow;
 use deltalake::kernel::*;
-use deltalake::logstore::ObjectStoreRef;
-use deltalake::logstore::{LogStoreRef, logstore_for};
+use deltalake::logstore::{LogStoreRef, ObjectStoreRef, StorageConfig, logstore_for};
 use deltalake::operations::create::CreateBuilder;
 use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
 use deltalake::parquet::file::metadata::ParquetMetaData;
 use deltalake::protocol::*;
-use deltalake::{DeltaResult, DeltaTable, DeltaTableError, ObjectMeta};
+use deltalake::table::config::TablePropertiesExt;
+use deltalake::{DeltaResult, DeltaTable, DeltaTableError, ObjectMeta, ObjectStore};
+use deltalake::{Schema, StructField};
 use futures::StreamExt;
 use tracing::log::*;
 use url::Url;
@@ -79,6 +79,8 @@ pub async fn convert(
         None => deltalake::open_table(&location).await,
     };
 
+    let storage_options = StorageConfig::parse_options(storage_options.unwrap_or_default())?;
+
     match table_result {
         Err(e) => {
             info!("No Delta table at {}: {:?}", location, e);
@@ -95,7 +97,7 @@ pub async fn convert(
                         .expect("Failed to parse the location as a file path")
                 }
             };
-            let store = logstore_for(location, storage_options.unwrap_or_default(), None)?;
+            let store = logstore_for(location, storage_options)?;
             let files = discover_parquet_files(store.object_store(None).clone()).await?;
             debug!(
                 "Files identified for turning into a delta table: {:?}",
@@ -188,7 +190,7 @@ pub async fn create_table_with(
 
     let arrow_schema = ArrowSchema::new_with_metadata(conversions, arrow_schema.metadata.clone());
 
-    let schema = Schema::try_from(&arrow_schema)
+    let schema = Schema::try_from_arrow(&arrow_schema)
         .expect("Failed to convert the schema for creating the table");
 
     let mut columns: Vec<StructField> = schema.fields().cloned().collect();
@@ -220,7 +222,7 @@ pub async fn create_table_with(
 pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
     use deltalake::kernel::transaction::{CommitBuilder, CommitProperties};
     if actions.is_empty() {
-        return Ok(table.version());
+        return Ok(table.version().unwrap());
     }
     let commit = CommitProperties::default();
     let pre_commit = CommitBuilder::from(commit)
@@ -240,7 +242,7 @@ pub async fn actions_for(
     table: &DeltaTable,
     evolve_schema: bool,
 ) -> DeltaResult<Vec<Action>> {
-    let existing_files: Vec<deltalake::Path> = table.get_files_iter()?.collect();
+    let existing_files: Vec<deltalake::Path> = table.snapshot()?.file_paths_iter().collect();
     let new_files: Vec<ObjectMeta> = mods
         .adds()
         .into_iter()
@@ -279,7 +281,7 @@ async fn metadata_actions_for(
 ) -> DeltaResult<Vec<Action>> {
     if let Some(last_file) = files.last() {
         debug!("Attempting to evolve the schema for {table:?}");
-        let table_schema = table.get_schema()?;
+        let table_schema = table.snapshot()?.schema();
         // Cloning here to take an owned version of [DeltaTableMetaData] for later modification
         let table_metadata = table.metadata()?;
 
@@ -296,7 +298,7 @@ async fn metadata_actions_for(
                 new_schema.push(StructField::new(
                     name.to_string(),
                     // These types can have timestmaps in them, so coerce them properly
-                    deltalake::kernel::DataType::try_from(coerced.data_type())?,
+                    deltalake::kernel::schema::DataType::try_from_arrow(coerced.data_type())?,
                     true,
                 ));
             }
@@ -304,16 +306,16 @@ async fn metadata_actions_for(
 
         if new_schema.len() > table_schema.fields.len() {
             let new_schema = Schema::new(new_schema);
-            let mut action = deltalake::kernel::Metadata::try_new(
-                new_schema,
-                table_metadata.partition_columns.clone(),
-                table_metadata.configuration.clone(),
+            let mut action = deltalake::kernel::new_metadata(
+                &new_schema,
+                table_metadata.partition_columns().clone(),
+                table_metadata.configuration().clone(),
             )?;
-            if let Some(name) = &table_metadata.name {
-                action = action.with_name(name);
+            if let Some(name) = &table_metadata.name() {
+                action = action.with_name(name.to_string())?;
             }
-            if let Some(description) = &table_metadata.description {
-                action = action.with_description(description);
+            if let Some(description) = &table_metadata.description() {
+                action = action.with_description(description.to_string())?;
             }
             return Ok(vec![Action::Metadata(action)]);
         }
@@ -498,6 +500,7 @@ mod tests {
 
     use chrono::prelude::Utc;
     use deltalake::Path;
+    use std::num::NonZero;
 
     /*
      * test utilities to share between test cases
@@ -591,8 +594,7 @@ mod tests {
             let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
             (
                 dir,
-                logstore_for(url, HashMap::<String, String>::default(), None)
-                    .expect("Failed to get store"),
+                logstore_for(url, StorageConfig::default()).expect("Failed to get store"),
             )
         }
     }
@@ -601,8 +603,7 @@ mod tests {
     async fn discover_parquet_files_empty_dir() {
         let dir = tempfile::tempdir().expect("Failed to create a temporary directory");
         let url = Url::from_file_path(dir.path()).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::<String, String>::default(), None)
-            .expect("Failed to get store");
+        let store = logstore_for(url, StorageConfig::default()).expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
@@ -615,8 +616,7 @@ mod tests {
         let path = std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned")
             .expect("Failed to canonicalize");
         let url = Url::from_file_path(path).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::<String, String>::default(), None)
-            .expect("Failed to get store");
+        let store = logstore_for(url, StorageConfig::default()).expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
@@ -773,7 +773,7 @@ mod tests {
      * See <https://github.com/buoyant-data/oxbow/issues/2>
      */
     #[tokio::test]
-    async fn create_schema_for_partitioned_path() {
+    async fn create_schema_for_partitioned_path() -> DeltaResult<()> {
         let (_tempdir, store) =
             util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
         let files = discover_parquet_files(store.object_store(None).clone())
@@ -791,11 +791,12 @@ mod tests {
         let table = create_table_with(&files, store.clone())
             .await
             .expect("Failed to create table");
-        let schema = table.get_schema().expect("Failed to get schema");
+        let schema = table.snapshot()?.schema();
         assert!(
             schema.index_of("c2").is_some(),
             "The schema does not include the expected partition key `c2`"
         );
+        Ok(())
     }
 
     /*
@@ -840,8 +841,7 @@ mod tests {
         let files: Vec<ObjectMeta> = vec![];
         let store = logstore_for(
             Url::parse("s3://example/non-existent").unwrap(),
-            HashMap::<String, String>::default(),
-            None,
+            StorageConfig::default(),
         )
         .expect("Failed to get store");
         let result = create_table_with(&files, store).await;
@@ -861,8 +861,7 @@ mod tests {
             std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned-with-checkpoint")
                 .expect("Failed to canonicalize");
         let url = Url::from_file_path(test_dir).expect("Failed to parse local path");
-        let store = logstore_for(url, HashMap::<String, String>::default(), None)
-            .expect("Failed to get store");
+        let store = logstore_for(url, StorageConfig::default()).expect("Failed to get store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
@@ -876,7 +875,7 @@ mod tests {
      * will automatically insert the hive-style partition information into the parquet schema
      */
     #[tokio::test]
-    async fn test_avoid_duplicate_partition_columns() {
+    async fn test_avoid_duplicate_partition_columns() -> DeltaResult<()> {
         let (_tempdir, store) = util::create_temp_path_with("../../tests/data/hive/gcs-export");
 
         let files = discover_parquet_files(store.object_store(None).clone())
@@ -887,7 +886,7 @@ mod tests {
         let table = create_table_with(&files, store.clone())
             .await
             .expect("Failed to create table");
-        let schema = table.get_schema().expect("Failed to get schema");
+        let schema = table.snapshot()?.schema();
         let fields: Vec<&str> = schema.fields().map(|f| f.name.as_ref()).collect();
 
         let mut uniq = HashSet::new();
@@ -899,6 +898,7 @@ mod tests {
             fields.len(),
             "There were not unique fields, that probably means a `ds` column is doubled up"
         );
+        Ok(())
     }
 
     /// This test is mostly to validate an approach for reading and loading schema
@@ -912,8 +912,7 @@ mod tests {
             "../../tests/data/hive/deltatbl-partitioned",
         )?)
         .expect("Failed to parse");
-        let storage = logstore_for(url, HashMap::<String, String>::default(), None)
-            .expect("Failed to get store");
+        let storage = logstore_for(url, StorageConfig::default()).expect("Failed to get store");
         let meta = storage.object_store(None).head(&location).await.unwrap();
 
         let schema = fetch_parquet_schema(storage.object_store(None).clone(), meta)
@@ -958,9 +957,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_actions_for_with_redundant_files() {
+    async fn test_actions_for_with_redundant_files() -> DeltaResult<()> {
         let (_tempdir, table) = util::test_table().await;
-        let files = util::paths_to_objectmetas(table.get_files_iter().unwrap());
+        let files = util::paths_to_objectmetas(table.snapshot()?.file_paths_iter());
         let mods = TableMods::new(&files, &vec![]);
 
         let actions = actions_for(&mods, &table, false)
@@ -971,12 +970,13 @@ mod tests {
             0,
             "Expected no add actions for redundant files"
         );
+        Ok(())
     }
 
     #[tokio::test]
     async fn test_actions_for_with_removes() -> DeltaResult<()> {
         let (_tempdir, table) = util::test_table().await;
-        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let files = util::paths_to_objectmetas(table.snapshot()?.file_paths_iter());
         let mods = TableMods::new(&vec![], &files);
 
         let actions = actions_for(&mods, &table, false)
@@ -1032,7 +1032,7 @@ mod tests {
     #[tokio::test]
     async fn test_actions_for_with_redundant_removes() -> DeltaResult<()> {
         let (_tempdir, table) = util::test_table().await;
-        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let files = util::paths_to_objectmetas(table.snapshot()?.file_paths_iter());
         let mut redundant_removes = files.clone();
         redundant_removes.append(&mut files.clone());
         let mods = TableMods::new(&vec![], &redundant_removes);
@@ -1052,7 +1052,7 @@ mod tests {
     #[tokio::test]
     async fn test_tablemods_uniqueness() -> DeltaResult<()> {
         let (_tempdir, table) = util::test_table().await;
-        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let files = util::paths_to_objectmetas(table.snapshot()?.file_paths_iter());
         let mut redundant_removes = files.clone();
         redundant_removes.append(&mut files.clone());
         let mods = TableMods::new(&vec![], &redundant_removes);
@@ -1071,7 +1071,7 @@ mod tests {
     #[tokio::test]
     async fn test_commit_with_no_actions() {
         let (_tempdir, table) = util::test_table().await;
-        let initial_version = table.version();
+        let initial_version = table.version().unwrap();
         let result = commit_to_table(&[], &table).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), initial_version);
@@ -1090,7 +1090,7 @@ mod tests {
         let mut table = create_table_with(&[files[0].clone()], store.clone())
             .await
             .expect("Failed to create table");
-        let initial_version = table.version();
+        let initial_version = table.version().unwrap();
         assert_eq!(0, initial_version);
 
         let mods = TableMods::new(&files, &[files[0].clone()]);
@@ -1102,11 +1102,14 @@ mod tests {
             let _ = commit_to_table(&actions, &table).await?;
             table.load().await?;
         }
-        assert_eq!(table.version(), 101);
+        assert_eq!(table.version(), Some(101));
 
         if let Some(state) = table.state.as_ref() {
             // The default is expected to be 100
-            assert_eq!(100, state.table_config().checkpoint_interval());
+            assert_eq!(
+                NonZero::new(100).unwrap(),
+                state.table_config().checkpoint_interval()
+            );
         }
 
         use deltalake::Path;
@@ -1122,9 +1125,9 @@ mod tests {
     #[tokio::test]
     async fn test_commit_with_remove_actions() -> DeltaResult<()> {
         let (_tempdir, table) = util::test_table().await;
-        let initial_version = table.version();
+        let initial_version = table.version().unwrap();
 
-        let files = util::paths_to_objectmetas(table.get_files_iter()?);
+        let files = util::paths_to_objectmetas(table.snapshot()?.file_paths_iter());
         let mods = TableMods::new(&[], &files);
         let actions = actions_for(&mods, &table, false).await?;
         assert_eq!(
@@ -1143,7 +1146,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_commit_with_all_actions() {
+    async fn test_commit_with_all_actions() -> DeltaResult<()> {
         let (_tempdir, store) =
             util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
         let files = discover_parquet_files(store.object_store(None).clone())
@@ -1155,7 +1158,7 @@ mod tests {
         let mut table = create_table_with(&[files[0].clone()], store.clone())
             .await
             .expect("Failed to create table");
-        let initial_version = table.version();
+        let initial_version = table.version().unwrap();
         assert_eq!(0, initial_version);
 
         let mods = TableMods::new(&files, &vec![files[0].clone()]);
@@ -1176,10 +1179,15 @@ mod tests {
         );
         table.load().await.expect("Failed to reload table");
         assert_eq!(
-            table.get_files_iter().unwrap().collect::<Vec<_>>().len(),
+            table
+                .snapshot()?
+                .file_paths_iter()
+                .collect::<Vec<_>>()
+                .len(),
             3,
             "Expected to only find three files on the table at this state"
         );
+        Ok(())
     }
 
     #[tokio::test]
@@ -1196,7 +1204,7 @@ mod tests {
             .await
             .expect("Failed to create a test table");
 
-        let initial_version = table.version();
+        let initial_version = table.version().unwrap();
         assert_eq!(initial_version, 0);
 
         let adds = discover_parquet_files(store.object_store(None).clone())
@@ -1225,8 +1233,8 @@ mod tests {
         // The store that comes back is not properly prefixed to the delta table that this test
         // needs to work with
         let table_url = Url::from_file_path(&table_path).expect("Failed to parse local path");
-        let store = logstore_for(table_url, HashMap::<String, String>::default(), None)
-            .expect("Failed to get object store");
+        let store =
+            logstore_for(table_url, StorageConfig::default()).expect("Failed to get object store");
 
         let files = discover_parquet_files(store.object_store(None).clone())
             .await

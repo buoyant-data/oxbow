@@ -94,7 +94,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                             let mut updated = original.clone();
                             updated.insert(
                                 "delta.lastUpdateVersion".into(),
-                                delta_table.version().to_string(),
+                                delta_table.version().unwrap().to_string(),
                             );
                             Some(updated)
                         }

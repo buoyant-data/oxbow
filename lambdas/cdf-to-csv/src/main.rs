@@ -6,12 +6,12 @@ use aws_lambda_events::event::sqs::SqsEvent;
 use deltalake::datafusion::dataframe::DataFrameWriteOptions;
 use deltalake::datafusion::prelude::*;
 use deltalake::delta_datafusion::DeltaCdfTableProvider;
+use deltalake::logstore::object_store::ObjectStore;
+use deltalake::logstore::object_store::aws::AmazonS3Builder;
+use deltalake::logstore::object_store::path::Path;
+use deltalake::logstore::object_store::prefix::PrefixStore;
 use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use object_store::ObjectStore;
-use object_store::PutPayload;
-use object_store::path::Path;
-use object_store::prefix::PrefixStore;
 use oxbow_lambda_shared::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -62,7 +62,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             // the context is unique to a triggered table
             let ctx = SessionContext::new();
             let store: Arc<dyn ObjectStore> = Arc::new(
-                object_store::aws::AmazonS3Builder::from_env()
+                AmazonS3Builder::from_env()
                     .with_url(&destination)
                     .build()
                     .expect("Failed to create an output object_store"),
@@ -70,7 +70,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
 
             let table = deltalake::open_table(trigger.location().as_str()).await?;
             info!(
-                "Loaded a table for {} at version {}",
+                "Loaded a table for {} at version {:?}",
                 trigger.location().as_str(),
                 table.version()
             );
@@ -181,8 +181,9 @@ struct Completion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use deltalake::logstore::object_store::memory::InMemory;
+    use deltalake::logstore::object_store::path::Path;
     use futures::StreamExt;
-    use object_store::{GetResultPayload, ObjectStore};
 
     use deltalake::datafusion::{
         common::assert_batches_sorted_eq, dataframe::DataFrameWriteOptions,
@@ -268,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_csv() -> DeltaResult<()> {
         let (ctx, cdf) = cdf_test_setup().await?;
-        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         let insert_store = Arc::new(PrefixStore::new(store.clone(), "inserts"));
         let delete_store = Arc::new(PrefixStore::new(store.clone(), "deletes"));
         ctx.register_object_store(&Url::parse("cdfo://inserts").unwrap(), insert_store.clone());

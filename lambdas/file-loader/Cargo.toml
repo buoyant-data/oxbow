@@ -14,6 +14,7 @@ oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
 deltalake = { workspace = true }
+mimalloc = { workspace = true }
 tokio = { workspace = true }
 aws-config = "1.5.10"
 aws-sdk-s3 = "1.60.0"

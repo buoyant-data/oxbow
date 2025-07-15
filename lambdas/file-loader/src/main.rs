@@ -8,12 +8,18 @@ use aws_lambda_events::sqs::SqsMessage;
 use deltalake::DeltaResult;
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::json::reader::ReaderBuilder;
+use deltalake::kernel::engine::arrow_conversion::TryIntoArrow;
 use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
 use lambda_runtime::tracing::{debug, error, info, trace};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 
 use oxbow_lambda_shared::*;
 use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 use std::env;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -124,7 +130,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                         .send()
                         .await?;
                     info!("Attempting to read bytes from {file_record:?}");
-                    let schema = ArrowSchema::try_from(table.get_schema()?)?;
+                    let schema: ArrowSchema = table.snapshot()?.schema().try_into_arrow()?;
 
                     let mut json = ReaderBuilder::new(schema.into()).build_decoder()?;
                     while let Some(bytes) = response.body.try_next().await? {

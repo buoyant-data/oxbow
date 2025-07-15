@@ -3,6 +3,8 @@ use deltalake::arrow::array::RecordBatch;
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::error::ArrowError;
 use deltalake::arrow::json::reader::ReaderBuilder;
+use deltalake::kernel::engine::arrow_conversion::TryIntoArrow;
+use deltalake::table::config::TablePropertiesExt;
 use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
 use deltalake::{DeltaResult, DeltaTable};
 
@@ -47,7 +49,7 @@ pub async fn append_values(
 ) -> DeltaResult<DeltaTable> {
     let schema = table.get_schema()?;
     debug!("Attempting to append values with schema: {schema:?}");
-    let schema = ArrowSchema::try_from(schema)?;
+    let schema: ArrowSchema = schema.try_into_arrow()?;
 
     let mut writer = RecordBatchWriter::for_table(&table)?;
     let mut written = false;
@@ -129,6 +131,7 @@ mod tests {
     use super::*;
     use deltalake::kernel::DataType;
     use deltalake::*;
+    use std::num::NonZero;
 
     async fn setup_test_table() -> DeltaResult<DeltaTable> {
         DeltaOps::try_from_uri("memory://")
@@ -157,12 +160,12 @@ mod tests {
 
         let buf = File::open("../../tests/data/senators.jsonl")?;
         let reader = BufReader::new(buf);
-        let schema = ArrowSchema::try_from(table.get_schema()?)?;
+        let schema: ArrowSchema = table.snapshot()?.schema().try_into_arrow()?;
 
         let json = deltalake::arrow::json::ReaderBuilder::new(schema.into()).build(reader)?;
 
         let table = append_batches(table, json).await?;
-        assert_eq!(table.version(), 1);
+        assert_eq!(table.version(), Some(1));
         Ok(())
     }
 
@@ -178,7 +181,7 @@ mod tests {
             .await
             .expect("Failed to do nothing");
 
-        assert_eq!(table.version(), 1);
+        assert_eq!(table.version(), Some(1));
         Ok(())
     }
 
@@ -191,8 +194,8 @@ mod tests {
         "#;
 
         let cursor = Cursor::new(jsonl);
-        let schema = table.get_schema()?;
-        let schema = ArrowSchema::try_from(schema)?;
+        let schema = table.snapshot()?.schema();
+        let schema: ArrowSchema = schema.try_into_arrow()?;
         let mut reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
 
         while let Some(Ok(batch)) = reader.next() {
@@ -215,7 +218,7 @@ mod tests {
             .await
             .expect("Failed to do nothing");
 
-        assert_eq!(table.version(), 1);
+        assert_eq!(table.version(), Some(1));
         Ok(())
     }
 
@@ -235,7 +238,10 @@ mod tests {
 
         if let Some(state) = table.state.as_ref() {
             // The default is expected to be 100
-            assert_eq!(100, state.table_config().checkpoint_interval());
+            assert_eq!(
+                NonZero::new(100).unwrap(),
+                state.table_config().checkpoint_interval()
+            );
         }
 
         use deltalake::Path;
@@ -245,7 +251,7 @@ mod tests {
             .await?;
 
         assert_ne!(0, checkpoint.size);
-        assert_eq!(table.version(), 101);
+        assert_eq!(table.version(), Some(101));
         Ok(())
     }
 }

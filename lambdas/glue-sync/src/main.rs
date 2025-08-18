@@ -263,7 +263,7 @@ fn glue_columns_for(table: &DeltaTable) -> Vec<Column> {
             .fields()
             .map(|field| {
                 Column::builder()
-                    .name(field.name.clone())
+                    .name(field.name.to_lowercase())
                     .r#type(to_glue_type(field.data_type()))
                     .build()
                     .expect("Failed to build column from Delta schema!")

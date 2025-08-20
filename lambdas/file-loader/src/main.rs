@@ -46,22 +46,19 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         match suffix_from_record(&file_record) {
             RecordType::Jsonl => {
                 debug!("Preparing to load filue {file_record:?}");
-                let request = client
+                let response = client
                     .get_object()
                     .bucket(file_record.s3.bucket.name.clone().unwrap())
                     .key(file_record.s3.object.key.as_ref().unwrap())
                     .send()
-                    .await;
-                if let Ok(response) = request {
-                    debug!("Attempting to read bytes from {file_record:?}");
-                    let stream = response.body;
-                    let data = stream.collect().await.map(|data| data.into_bytes());
-                    // This is silly unnecessary but trying to get to splittable lines as quickly
-                    // and easily as possible
-                    let s =
-                        String::from_utf8(data.unwrap().into()).expect("File was not proper UTF8?");
-                    lines.extend(s.split("\n").map(|m| m.to_string()));
-                }
+                    .await?;
+                debug!("Attempting to read bytes from {file_record:?}");
+                let stream = response.body;
+                let data = stream.collect().await.map(|data| data.into_bytes());
+                // This is silly unnecessary but trying to get to splittable lines as quickly
+                // and easily as possible
+                let s = String::from_utf8(data.unwrap().into()).expect("File was not proper UTF8?");
+                lines.extend(s.split("\n").map(|m| m.to_string()));
             }
             RecordType::Unknown => {
                 error!("file-loader was invoked for a file with an unknown suffix! Ignoring: {file_record:?}");
@@ -69,15 +66,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         }
     }
 
-    match append_values(table, lines).await {
-        Ok(table) => {
-            debug!("Appended values to: {table:?}");
-        }
-        Err(e) => {
-            error!("Failed to append the values to configured Delta table: {e:?}");
-            return Err(Box::new(e));
-        }
-    }
+    let table = append_values(table, lines).await?;
+    debug!("Appended values to: {table:?}");
     Ok(())
 }
 

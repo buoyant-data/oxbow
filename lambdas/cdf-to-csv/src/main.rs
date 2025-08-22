@@ -9,6 +9,7 @@ use deltalake::delta_datafusion::DeltaCdfTableProvider;
 use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use object_store::prefix::PrefixStore;
+use object_store::ObjectStore;
 use oxbow_lambda_shared::*;
 use std::sync::Arc;
 use tracing::log::*;
@@ -57,10 +58,12 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             // Creating a new [SessionContext] for every trigger to make sure the namespace inside
             // the context is unique to a triggered table
             let ctx = SessionContext::new();
-            let store = object_store::aws::AmazonS3Builder::from_env()
-                .with_url(&destination)
-                .build()
-                .expect("Failed to create an output object_store");
+            let store: Arc<dyn ObjectStore> = Arc::new(
+                object_store::aws::AmazonS3Builder::from_env()
+                    .with_url(&destination)
+                    .build()
+                    .expect("Failed to create an output object_store"),
+            );
 
             let table = deltalake::open_table(trigger.location().as_str()).await?;
             info!(
@@ -75,27 +78,32 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
                 min = max - 1;
             }
 
-            // The prefix used should be bespoke for every table trigger and contain the max
-            // version processed to make sure there are no conflicts between invocations
-            let prefix = format!("{}/{}/inserts", trigger.location().path(), max);
-            let store = Arc::new(PrefixStore::new(store, prefix));
-            // Registering our destination into the [SessionContext] so that write_csv() can just use our
-            // cdf output scheme for writing into S3
-            ctx.register_object_store(
-                &Url::parse("cdfo://").expect("Failed to parse internal URI scheme"),
-                store.clone(),
-            );
-
             // Always look at the last version
             let cdf = DeltaOps::from(table)
                 .load_cdf()
                 .with_starting_version(min)
                 .with_ending_version(max);
             let provider = DeltaCdfTableProvider::try_new(cdf)?;
+            ctx.register_table("cdf", Arc::new(provider))?;
 
-            let change_data = retrieve_change_data(&ctx, provider).await?;
-            change_data
-                .write_csv("cdfo://", DataFrameWriteOptions::default(), None)
+            // The prefix used should be bespoke for every table trigger and contain the max
+            // version processed to make sure there are no conflicts between invocations
+            let prefix = format!("{}/{}", trigger.location().path(), max);
+            let store: Arc<dyn ObjectStore> = Arc::new(PrefixStore::new(store, prefix));
+            // Registering our destinations into the [SessionContext] so that write_csv() can write properly
+            let insert_store = Arc::new(PrefixStore::new(store.clone(), "inserts"));
+            let delete_store = Arc::new(PrefixStore::new(store.clone(), "deletes"));
+            ctx.register_object_store(&Url::parse("cdfo://inserts").unwrap(), insert_store.clone());
+            ctx.register_object_store(&Url::parse("cdfo://deletes").unwrap(), delete_store.clone());
+
+            let inserts = retrieve_inserts(&ctx).await?;
+            let deletes = retrieve_deletes(&ctx).await?;
+            inserts
+                .write_csv("cdfo://inserts", DataFrameWriteOptions::default(), None)
+                .await?;
+
+            deletes
+                .write_csv("cdfo://deletes", DataFrameWriteOptions::default(), None)
                 .await?;
         } else {
             warn!("Invoked but didn't find min/max trigger versions, something is fishy!");
@@ -111,13 +119,21 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
 ///
 /// NOTE: Right now this is only handling inserts/updates but **not** deletes. Deletes should be
 /// handled somewhat differently
-async fn retrieve_change_data(
-    ctx: &SessionContext,
-    cdf_provider: DeltaCdfTableProvider,
-) -> DeltaResult<DataFrame> {
-    ctx.register_table("cdf", Arc::new(cdf_provider))?;
+async fn retrieve_inserts(ctx: &SessionContext) -> DeltaResult<DataFrame> {
     let df = ctx
         .sql("SELECT * FROM cdf WHERE _change_type IN ('insert', 'update_postimage')")
+        .await?;
+    Ok(df.drop_columns(&[
+        "_change_type",
+        "_commit_version",
+        "_commit_timestamp",
+        "_change_version",
+    ])?)
+}
+
+async fn retrieve_deletes(ctx: &SessionContext) -> DeltaResult<DataFrame> {
+    let df = ctx
+        .sql("SELECT * FROM cdf WHERE _change_type IN ('delete')")
         .await?;
     Ok(df.drop_columns(&[
         "_change_type",
@@ -131,6 +147,7 @@ async fn retrieve_change_data(
 mod tests {
     use super::*;
     use futures::StreamExt;
+    use object_store::path::Path;
     use object_store::ObjectStore;
 
     use deltalake::datafusion::{
@@ -144,12 +161,32 @@ mod tests {
         let ctx = SessionContext::new();
         Ok((ctx, cdf))
     }
+    #[tokio::test]
+    async fn test_read_cdf_deletes() -> DeltaResult<()> {
+        let (ctx, cdf) = cdf_test_setup().await?;
+        let provider = DeltaCdfTableProvider::try_new(cdf)?;
+        ctx.register_table("cdf", Arc::new(provider))?;
+        let df = retrieve_deletes(&ctx).await?;
+
+        assert_batches_sorted_eq!(
+            [
+                "+----+--------+------------+",
+                "| id | name   | birthday   |",
+                "+----+--------+------------+",
+                "| 7  | Dennis | 2023-12-29 |",
+                "+----+--------+------------+",
+            ],
+            &df.collect().await?
+        );
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_read_cdf() -> DeltaResult<()> {
         let (ctx, cdf) = cdf_test_setup().await?;
         let provider = DeltaCdfTableProvider::try_new(cdf)?;
-        let df = retrieve_change_data(&ctx, provider).await?;
+        ctx.register_table("cdf", Arc::new(provider))?;
+        let df = retrieve_inserts(&ctx).await?;
 
         assert_batches_sorted_eq!(
             [
@@ -176,8 +213,11 @@ mod tests {
     #[tokio::test]
     async fn test_write_csv() -> DeltaResult<()> {
         let (ctx, cdf) = cdf_test_setup().await?;
-        let store = Arc::new(object_store::memory::InMemory::new());
-        ctx.register_object_store(&Url::parse("cdfo://").unwrap(), store.clone());
+        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let insert_store = Arc::new(PrefixStore::new(store.clone(), "inserts"));
+        let delete_store = Arc::new(PrefixStore::new(store.clone(), "deletes"));
+        ctx.register_object_store(&Url::parse("cdfo://inserts").unwrap(), insert_store.clone());
+        ctx.register_object_store(&Url::parse("cdfo://deletes").unwrap(), delete_store.clone());
 
         let mut stream = store.list(None);
         while let Some(Ok(_entry)) = stream.next().await {
@@ -185,19 +225,31 @@ mod tests {
         }
 
         let provider = DeltaCdfTableProvider::try_new(cdf)?;
-        let change_data = retrieve_change_data(&ctx, provider).await?;
+        ctx.register_table("cdf", Arc::new(provider))?;
+        let change_data = retrieve_inserts(&ctx).await?;
+        let deletes = retrieve_deletes(&ctx).await?;
         change_data
-            .write_csv("cdfo://", DataFrameWriteOptions::default(), None)
+            .write_csv("cdfo://inserts", DataFrameWriteOptions::default(), None)
+            .await?;
+        deletes
+            .write_csv("cdfo://deletes", DataFrameWriteOptions::default(), None)
             .await?;
 
         let mut stream = store.list(None);
-        let mut output_found = false;
+        let mut insert_found = false;
+        let mut delete_found = false;
         while let Some(Ok(entry)) = stream.next().await {
             println!("entry: {entry:?}");
-            output_found = true;
+            if entry.location.prefix_matches(&Path::from("deletes")) {
+                delete_found = true;
+            }
+            if entry.location.prefix_matches(&Path::from("inserts")) {
+                insert_found = true;
+            }
         }
 
-        assert!(output_found, "Nothing was found in the prefix!");
+        assert!(delete_found, "No delete was found to be written");
+        assert!(insert_found, "No insert was found to be written");
         Ok(())
     }
 }

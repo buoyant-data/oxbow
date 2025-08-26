@@ -1,6 +1,7 @@
 use chrono::prelude::*;
 use deltalake::arrow::array::RecordBatch;
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
+use deltalake::arrow::error::ArrowError;
 use deltalake::arrow::json::reader::ReaderBuilder;
 use deltalake::writer::{record_batch::RecordBatchWriter, DeltaWriter};
 use deltalake::{DeltaResult, DeltaTable};
@@ -9,7 +10,37 @@ use std::io::Cursor;
 use std::sync::Arc;
 use tracing::log::*;
 
-/// Function responsible for appending values to an opened [DeltaTable]
+///
+/// Append an iterator which yields [RecordBatch] onto the given [DeltaTable]
+///
+/// This fnuciton will produce a single transactional commit onto the table
+pub async fn append_batches(
+    mut table: DeltaTable,
+    batches: impl IntoIterator<Item = Result<RecordBatch, ArrowError>>,
+) -> DeltaResult<DeltaTable> {
+    let mut writer = RecordBatchWriter::for_table(&table)?;
+    let mut written = false;
+
+    trace!("Iterating through batches to write");
+    for batch in batches {
+        let batch = batch?;
+        let batch = augment_with_ds(batch)?;
+        debug!("Augmented: {batch:?}");
+        writer.write(batch).await?;
+        written = true;
+    }
+
+    if written {
+        let version = writer.flush_and_commit(&mut table).await?;
+        info!("Successfully flushed v{version} via append_batches to Delta table");
+    } else {
+        error!("Failed to write any data files! Cowardly avoiding a Delta commit");
+    }
+
+    Ok(table)
+}
+
+/// Function responsible for appending string values to an opened [DeltaTable]
 pub async fn append_values(
     mut table: DeltaTable,
     values: impl IntoIterator<Item: AsRef<str>>,
@@ -30,7 +61,7 @@ pub async fn append_values(
         for res in reader {
             match res {
                 Ok(batch) => {
-                    let batch = augment_with_ds(&batch);
+                    let batch = augment_with_ds(batch)?;
                     debug!("Augmented: {batch:?}");
                     writer.write(batch).await?;
                     written = true;
@@ -61,13 +92,13 @@ pub async fn append_jsonl(table: DeltaTable, jsonl: &str) -> DeltaResult<DeltaTa
 /// Augment the given [RecordBatch] with another column that represents `ds`, treated
 /// as the date-stampe, e.g. `2024-01-01`.
 ///
-fn augment_with_ds(batch: &RecordBatch) -> RecordBatch {
+fn augment_with_ds(batch: RecordBatch) -> DeltaResult<RecordBatch> {
     use deltalake::arrow::array::{Array, StringArray};
 
     // If the schema doesn't have a `ds` then don't try to add one
     if batch.column_by_name("ds").is_none() {
         info!("The schema of the destination table doesn't have `ds` so not adding the value");
-        return batch.clone();
+        return Ok(batch);
     }
 
     let mut ds = vec![];
@@ -90,7 +121,7 @@ fn augment_with_ds(batch: &RecordBatch) -> RecordBatch {
         }
     }
 
-    RecordBatch::try_new(batch.schema(), columns).expect("Failed to transpose `ds` onto batch")
+    Ok(RecordBatch::try_new(batch.schema(), columns)?)
 }
 
 #[cfg(test)]
@@ -108,6 +139,31 @@ mod tests {
             .with_column("ds", DataType::STRING, true, None)
             .with_column("name", DataType::STRING, true, None)
             .await
+    }
+
+    #[tokio::test]
+    async fn test_append_batches() -> DeltaResult<()> {
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let table = DeltaOps::try_from_uri("memory://")
+            .await?
+            .create()
+            .with_table_name("test")
+            .with_column("current", DataType::BOOLEAN, true, None)
+            .with_column("ds", DataType::STRING, true, None)
+            .with_column("description", DataType::STRING, true, None)
+            .await?;
+
+        let buf = File::open("../../tests/data/senators.jsonl")?;
+        let reader = BufReader::new(buf);
+        let schema = ArrowSchema::try_from(table.get_schema()?)?;
+
+        let json = deltalake::arrow::json::ReaderBuilder::new(schema.into()).build(reader)?;
+
+        let table = append_batches(table, json).await?;
+        assert_eq!(table.version(), 1);
+        Ok(())
     }
 
     #[tokio::test]
@@ -140,8 +196,8 @@ mod tests {
         let mut reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
 
         while let Some(Ok(batch)) = reader.next() {
-            let batch = augment_with_ds(&batch);
-            println!("{:?}", batch);
+            let batch = augment_with_ds(batch)?;
+            println!("{batch:?}");
             assert_ne!(None, batch.column_by_name("ds"));
         }
         Ok(())

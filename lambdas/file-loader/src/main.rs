@@ -4,6 +4,8 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
+use deltalake::arrow::datatypes::Schema as ArrowSchema;
+use deltalake::arrow::json::reader::ReaderBuilder;
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use tracing::log::*;
 
@@ -24,7 +26,7 @@ enum RecordType {
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
-    debug!("Receiving event: {:?}", event);
+    debug!("Receiving event: {event:?}");
 
     let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
         Ok(_) => s3_from_sns(event.payload)?,
@@ -33,32 +35,40 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let records: Vec<S3EventRecord> = records_with_url_decoded_keys(&records);
     debug!("processing records: {records:?}");
 
-    let table = oxbow::lock::open_table(&table_uri)
+    let mut table = oxbow::lock::open_table(&table_uri)
         .await
         .expect("Failed to open the Delta table!");
 
     let config = aws_config::load_from_env().await;
     let client = aws_sdk_s3::Client::new(&config);
 
-    let mut lines: Vec<String> = vec![];
-
     for file_record in records {
+        let key = file_record
+            .s3
+            .object
+            .key
+            .as_ref()
+            .expect("Failed to extract key from record");
         match suffix_from_record(&file_record) {
             RecordType::Jsonl => {
                 debug!("Preparing to load filue {file_record:?}");
-                let response = client
+                let mut response = client
                     .get_object()
                     .bucket(file_record.s3.bucket.name.clone().unwrap())
                     .key(file_record.s3.object.key.as_ref().unwrap())
                     .send()
                     .await?;
                 debug!("Attempting to read bytes from {file_record:?}");
-                let stream = response.body;
-                let data = stream.collect().await.map(|data| data.into_bytes());
-                // This is silly unnecessary but trying to get to splittable lines as quickly
-                // and easily as possible
-                let s = String::from_utf8(data.unwrap().into()).expect("File was not proper UTF8?");
-                lines.extend(s.split("\n").map(|m| m.to_string()));
+                let schema = ArrowSchema::try_from(table.get_schema()?)?;
+
+                let mut json = ReaderBuilder::new(schema.into()).build_decoder()?;
+                while let Some(bytes) = response.body.try_next().await? {
+                    json.decode(&bytes)?;
+                }
+                if let Some(batch) = json.flush()? {
+                    table = append_batches(table, vec![Ok(batch)]).await?;
+                    debug!("Appended values from {key} to: {table:?}");
+                }
             }
             RecordType::Unknown => {
                 error!("file-loader was invoked for a file with an unknown suffix! Ignoring: {file_record:?}");
@@ -66,8 +76,6 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         }
     }
 
-    let table = append_values(table, lines).await?;
-    debug!("Appended values to: {table:?}");
     Ok(())
 }
 
@@ -108,6 +116,34 @@ fn suffix_from_record(record: &S3EventRecord) -> RecordType {
 mod tests {
     use super::*;
     use aws_lambda_events::s3::{S3Entity, S3EventRecord, S3Object};
+    use std::sync::Arc;
+
+    /// This test is largely just for sanity checking the [ReaderBuilder] approach for
+    /// deserializing line-delimited JSON
+    #[test]
+    fn test_json_deserialization() -> anyhow::Result<()> {
+        use deltalake::arrow::array::RecordBatch;
+        use deltalake::arrow::datatypes::*;
+        use std::fs::File;
+        use std::io::BufReader;
+        let buf = File::open("../../tests/data/senators.jsonl")?;
+        let reader = BufReader::new(buf);
+
+        // Normally the schema would come from the Delta table but for this test, providing an
+        // arrow schema manually
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("current", DataType::Boolean, false),
+            Field::new("description", DataType::Utf8, false),
+            Field::new("party", DataType::Utf8, false),
+        ]));
+
+        let json = deltalake::arrow::json::ReaderBuilder::new(schema).build(reader)?;
+        let batches: Vec<RecordBatch> = json.into_iter().map(|i| i.unwrap()).collect();
+
+        deltalake::arrow::util::pretty::print_batches(&batches)?;
+
+        Ok(())
+    }
 
     #[test]
     fn test_suffix_from_record() {

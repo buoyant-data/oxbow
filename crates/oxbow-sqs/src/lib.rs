@@ -184,6 +184,7 @@ impl TimedConsumer {
                 .send()
                 .await?;
         }
+        self.receive_handles = vec![];
         Ok(())
     }
 }

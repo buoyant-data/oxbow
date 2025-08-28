@@ -14,7 +14,8 @@ fi;
 
 . venv/bin/activate
 
-PLATFORMS=("x86-64" "arm64")
+#PLATFORMS=("x86-64" "arm64")
+PLATFORMS=("x86-64")
 
 for d in $(ls ./lambdas); do
         if [ ! -d "./lambdas/${d}" ]; then

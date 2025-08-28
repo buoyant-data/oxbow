@@ -4,15 +4,19 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
+use aws_lambda_events::sqs::SqsMessage;
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::json::reader::ReaderBuilder;
+use deltalake::writer::{record_batch::RecordBatchWriter, DeltaWriter};
+use deltalake::DeltaResult;
+use lambda_runtime::tracing::{debug, error, info, trace};
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
-use tracing::log::*;
 
-use oxbow::write::*;
 use oxbow_lambda_shared::*;
+use oxbow_sqs::{ConsumerConfig, TimedConsumer};
 
 use std::env;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The type of data file which file-loader can load
 #[derive(Clone, Debug, PartialEq)]
@@ -23,58 +27,138 @@ enum RecordType {
     Unknown,
 }
 
+/// Simple function for extracting the necessary [S3EventRecord] structs from a given [SqsEvent]
+///
+/// This utilizes the `UNWRAP_SNS_ENVELOPE` environment variable to handle SNS-encoded bucket
+/// notifications
+fn extract_records_from(
+    events: impl IntoIterator<Item = SqsEvent>,
+) -> DeltaResult<Vec<S3EventRecord>> {
+    let mut records = vec![];
+    for event in events {
+        let pieces = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+            Ok(_) => s3_from_sns(event)?,
+            Err(_) => s3_from_sqs(event)?,
+        };
+        records.extend(pieces);
+    }
+    Ok(records_with_url_decoded_keys(&records))
+}
+
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
+    let fn_start = Instant::now();
     debug!("Receiving event: {event:?}");
+    let mut records = extract_records_from(vec![event.payload])?;
 
-    let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
-        Ok(_) => s3_from_sns(event.payload)?,
-        Err(_) => s3_from_sqs(event.payload)?,
-    };
-    let records: Vec<S3EventRecord> = records_with_url_decoded_keys(&records);
-    debug!("processing records: {records:?}");
+    info!("Processing {} bucket notifications", records.len());
+    let fn_start_since_epoch_ms: u128 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Failed to get a system time after unix epoch")
+        .as_millis();
+    // Millis to allow for consuming more messages
+    let more_deadline_ms = ((event.context.deadline as u128) - fn_start_since_epoch_ms) / 2;
 
     let mut table = oxbow::lock::open_table(&table_uri)
         .await
         .expect("Failed to open the Delta table!");
+    let mut writer = RecordBatchWriter::for_table(&table)?;
 
     let config = aws_config::load_from_env().await;
     let client = aws_sdk_s3::Client::new(&config);
+    let consumer_config = ConsumerConfig {
+        retrieval_max: 1,
+        ..Default::default()
+    };
+    info!("TimedConsumer configuration being used: {consumer_config:?}");
 
-    for file_record in records {
-        let key = file_record
-            .s3
-            .object
-            .key
-            .as_ref()
-            .expect("Failed to extract key from record");
-        match suffix_from_record(&file_record) {
-            RecordType::Jsonl => {
-                debug!("Preparing to load filue {file_record:?}");
-                let mut response = client
-                    .get_object()
-                    .bucket(file_record.s3.bucket.name.clone().unwrap())
-                    .key(file_record.s3.object.key.as_ref().unwrap())
-                    .send()
-                    .await?;
-                debug!("Attempting to read bytes from {file_record:?}");
-                let schema = ArrowSchema::try_from(table.get_schema()?)?;
+    let mut consumer = TimedConsumer::new(
+        consumer_config,
+        &config,
+        Duration::from_millis(
+            more_deadline_ms
+                .try_into()
+                .expect("Failed to compute a 64-bit deadline"),
+        ),
+    );
+    let mut bytes_consumed: usize = 0;
 
-                let mut json = ReaderBuilder::new(schema.into()).build_decoder()?;
-                while let Some(bytes) = response.body.try_next().await? {
-                    json.decode(&bytes)?;
+    loop {
+        let next_up = consumer.next().await?;
+
+        if let Some(batch) = next_up {
+            debug!(
+                "Buffered an additional {} more messages from SQS",
+                batch.len()
+            );
+            // When pulling messages separately, convert them to a Lambda SqsEvent like structure for
+            // easier reuse of deserialization codec
+            let event = SqsEvent {
+                records: batch.into_iter().map(convert_from_sqs).collect(),
+            };
+            records.extend(extract_records_from(vec![event])?);
+        }
+
+        if records.is_empty() {
+            trace!("No more records to process at the moment, see ya later!");
+            break;
+        }
+
+        // Each iteration we'll drain the records to make sure everything is _gotten_ before
+        // continuing
+        for file_record in records.drain(..) {
+            let key = file_record
+                .s3
+                .object
+                .key
+                .as_ref()
+                .expect("Failed to extract key from record");
+            match suffix_from_record(&file_record) {
+                RecordType::Jsonl => {
+                    debug!("Preparing to load filue {file_record:?}");
+                    let mut response = client
+                        .get_object()
+                        .bucket(file_record.s3.bucket.name.clone().unwrap())
+                        .key(file_record.s3.object.key.as_ref().unwrap())
+                        .send()
+                        .await?;
+                    info!("Attempting to read bytes from {file_record:?}");
+                    let schema = ArrowSchema::try_from(table.get_schema()?)?;
+
+                    let mut json = ReaderBuilder::new(schema.into()).build_decoder()?;
+                    while let Some(bytes) = response.body.try_next().await? {
+                        bytes_consumed += bytes.len();
+                        json.decode(&bytes)?;
+                    }
+                    if let Some(batch) = json.flush()? {
+                        debug!("Writing a batch with {} rows", batch.num_rows());
+                        writer.write(batch).await?;
+                        debug!("Appended values from {key} to: {table:?}");
+                    }
                 }
-                if let Some(batch) = json.flush()? {
-                    table = append_batches(table, vec![Ok(batch)]).await?;
-                    debug!("Appended values from {key} to: {table:?}");
+                RecordType::Unknown => {
+                    error!("file-loader was invoked for a file with an unknown suffix! Ignoring: {file_record:?}");
                 }
             }
-            RecordType::Unknown => {
-                error!("file-loader was invoked for a file with an unknown suffix! Ignoring: {file_record:?}");
+        }
+
+        if let Ok(bytes_to_consume) = std::env::var("BUFFER_MORE_MBYTES_ALLOWED") {
+            let mbytes_to_consume: usize = str::parse(&bytes_to_consume)
+                .expect("BUFFER_MORE_BYTES_ALLOWED must be parseable as a uint64");
+
+            info!("Allocated {bytes_consumed} bytes thus far... I can only have {mbytes_to_consume}MB");
+            if bytes_consumed >= (mbytes_to_consume * 1024 * 1024) {
+                info!("Finalizing after consuming {bytes_consumed} bytes of memory");
+                break;
             }
         }
     }
+
+    let version = writer.flush_and_commit(&mut table).await?;
+    info!("Successfully flushed v{version} via append_batches to Delta table");
+    debug!("Flushing consumer to wrap up the execution");
+    consumer.flush().await?;
 
     Ok(())
 }
@@ -82,14 +166,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     deltalake::aws::register_handlers(None);
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        // disable printing the name of the module in every log line.
-        .with_target(false)
-        // disabling time is handy because CloudWatch will add the ingestion time.
-        .without_time()
-        .init();
-
+    tracing::init_default_subscriber();
     let _ =
         env::var("DELTA_TABLE_URI").expect("The `DELTA_TABLE_URI` must be set in the environment");
     info!("Starting file-loader");
@@ -110,6 +187,20 @@ fn suffix_from_record(record: &S3EventRecord) -> RecordType {
         }
     }
     RecordType::Unknown
+}
+
+/// Convert an [oxbow_sqs::Message] into an [SqsMessage]
+fn convert_from_sqs(message: oxbow_sqs::Message) -> SqsMessage {
+    SqsMessage {
+        message_id: message.message_id,
+        receipt_handle: message.receipt_handle,
+        body: message.body,
+        md5_of_body: message.md5_of_body,
+        md5_of_message_attributes: message.md5_of_message_attributes,
+        // Translating message_attributes structs is an exercise for later
+        //attributes: message.message_attributes.unwrap_or_default()
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]
@@ -162,5 +253,19 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(suffix_from_record(&jsonl), RecordType::Jsonl);
+    }
+
+    /// The [SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
+    /// from Lambda triggers and the other directly from SQS.
+    ///
+    /// This function makes sure that they can be interchanged
+    #[test]
+    fn test_sqs_event_compat() {
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-tables.json")
+            .expect("Failed to read file");
+        let message = oxbow_sqs::Message::builder().body(buf.clone()).build();
+
+        let converted: SqsMessage = convert_from_sqs(message);
+        assert_eq!(Some(buf), converted.body);
     }
 }

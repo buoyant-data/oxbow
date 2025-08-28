@@ -92,7 +92,7 @@ pub async fn append_jsonl(table: DeltaTable, jsonl: &str) -> DeltaResult<DeltaTa
 /// Augment the given [RecordBatch] with another column that represents `ds`, treated
 /// as the date-stampe, e.g. `2024-01-01`.
 ///
-fn augment_with_ds(batch: RecordBatch) -> DeltaResult<RecordBatch> {
+pub fn augment_with_ds(batch: RecordBatch) -> DeltaResult<RecordBatch> {
     use deltalake::arrow::array::{Array, StringArray};
 
     // If the schema doesn't have a `ds` then don't try to add one

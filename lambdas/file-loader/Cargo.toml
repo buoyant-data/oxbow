@@ -9,16 +9,12 @@ homepage.workspace = true
 lambda_runtime = { version = "0.11" }
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
-chrono = { workspace = true }
-deltalake = { workspace = true }
-serde_json = { workspace = true }
+deltalake = { workspace = true, features = ["s3", "json"]}
 tokio = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 aws-config = "1.5.10"
 aws-sdk-s3 = "1.60.0"
-futures = "0.3.31"
-
+tracing-subscriber = { workspace = true }

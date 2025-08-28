@@ -7,7 +7,7 @@ homepage.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
-deltalake = { workspace = true }
+deltalake = { workspace = true, default-features = false }
 tracing = { workspace = true }
 url = { workspace = true }
 

@@ -3,19 +3,21 @@
 /// and appending them to the configured Delta table
 ///
 use aws_lambda_events::event::sqs::{SqsEvent, SqsMessage};
-use aws_sdk_sqs::types::DeleteMessageBatchRequestEntry;
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use serde::Deserialize;
 use tracing::log::*;
 
 use oxbow::write::*;
+use oxbow_sqs::{ConsumerConfig, TimedConsumer};
 
 use std::env;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
+    let buffer_more = std::env::var("BUFFER_MORE_QUEUE_URL").is_ok();
+
     let fn_start_since_epoch_ms: u128 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Failed to get a system time after unix epoch")
@@ -26,83 +28,41 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     trace!("payload received: {:?}", event.payload.records);
 
     let config = aws_config::from_env().load().await;
-    let sqs_client = aws_sdk_sqs::Client::new(&config);
-    // How many more messages should sqs-ingest try to consume?
-    let mut more_count = 0;
+    // Millis to allow for consuming more messages
+    let more_deadline_ms = ((event.context.deadline as u128) - fn_start_since_epoch_ms) / 2;
+    let mut limit: Option<u64> = None;
+
+    if let Ok(how_many_more) = std::env::var("BUFFER_MORE_MESSAGES") {
+        limit =
+            Some(how_many_more.parse().expect(
+                "The value of BUFFER_MORE_MESSAGES cannot be coerced into an int :thinking:",
+            ));
+        debug!("sqs-ingest configured to consume an additional {how_many_more} messages from SQS");
+        debug!("sqs-ingest will attempt to retrieve {how_many_more} messages in no more than {more_deadline_ms}ms to avoid timing out the function");
+    }
+
+    let mut consumer = TimedConsumer::new(
+        ConsumerConfig::default(),
+        &config,
+        Duration::from_millis(
+            more_deadline_ms
+                .try_into()
+                .expect("Failed to compute a 64-bit deadline"),
+        ),
+    );
+    consumer.limit = limit;
+
     debug!(
         "Context deadline in milliseconds since epoch is: {}",
         event.context.deadline
     );
-    // Millis to allow for consuming more messages
-    let more_deadline_ms: u128 = ((event.context.deadline as u128) - fn_start_since_epoch_ms) / 2;
     // records should contain the raw deserialized JSON payload that was sent through SQS. It
     // should be "fit" for writing to Delta
     let mut records: Vec<String> = vec![];
-    // Messages to delete from SQS if manually fetched
-    //
-    // This needs to be stored until after the successful write to Delta to ensure message
-    // persistence
-    let mut received = vec![];
 
-    if let Ok(how_many_more) = std::env::var("BUFFER_MORE_MESSAGES") {
-        more_count = how_many_more
-            .parse()
-            .expect("The value of BUFFER_MORE_MESSAGES cannot be coerced into an int :thinking:");
-        debug!("sqs-ingest configured to consume an additional {more_count} messages from SQS");
-        debug!("sqs-ingest will attempt to retrieve {more_count} messages in no more than {more_deadline_ms}ms to avoid timing out the function");
-    }
-
-    if more_count > 0 {
-        if let Ok(queue_url) = std::env::var("BUFFER_MORE_QUEUE_URL") {
-            let mut completed = false;
-            let mut fetched = 0;
-
-            while !completed {
-                let visibility_timeout: i32 = (more_deadline_ms / 1000).try_into()?;
-                debug!("Fetching things from SQS with a {visibility_timeout}s visibility timeout");
-
-                let receive = sqs_client
-                    .receive_message()
-                    .max_number_of_messages(10)
-                    // Set the visibility timeout to the timeout of the function to ensure that
-                    // messages are not made visible befoore the function exits
-                    .visibility_timeout(visibility_timeout)
-                    // Enable a smol long poll to receive messages
-                    .wait_time_seconds(1)
-                    .queue_url(queue_url.clone())
-                    .send()
-                    .await;
-
-                if receive.is_err() {
-                    error!("Received {receive:?} from SQS, not buffering more messages");
-                    break;
-                }
-                let receive = receive.unwrap();
-
-                for message in receive.messages.clone().unwrap_or_default() {
-                    received.push(
-                        DeleteMessageBatchRequestEntry::builder()
-                            .set_id(message.message_id)
-                            .set_receipt_handle(message.receipt_handle)
-                            .build()?,
-                    );
-                }
-
-                if receive.messages.is_none() {
-                    debug!("Empty receive off SQS, continuing on");
-                    break;
-                }
-
-                records.append(&mut extract_json_from_sqs_direct(
-                    receive.messages.unwrap_or_default(),
-                ));
-
-                fetched += 1;
-                completed =
-                    (fetched >= more_count) || (fn_start.elapsed().as_millis() >= more_deadline_ms);
-            }
-        } else {
-            error!("The function cannot buffer more messages without a BUFFER_MORE_QUEUE_URL! Only writing messages that triggered the Lambda");
+    if buffer_more {
+        while let Some(batch) = consumer.next().await? {
+            records.append(&mut extract_json_from_sqs_direct(batch));
         }
     }
 
@@ -125,21 +85,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         error!("An empty payload was extracted which doesn't seem right!");
     }
 
-    if let Ok(queue_url) = std::env::var("BUFFER_MORE_QUEUE_URL") {
-        if !received.is_empty() {
-            info!(
-                "Marking {} messages from SQS which were buffered as deleted",
-                received.len()
-            );
-            for batch in received.chunks(10) {
-                let _ = sqs_client
-                    .delete_message_batch()
-                    .queue_url(queue_url.clone())
-                    .set_entries(Some(batch.to_vec()))
-                    .send()
-                    .await?;
-            }
-        }
+    if buffer_more {
+        debug!("more messages were buffered and we need to flush() to clean them up");
+        consumer.flush().await?;
     }
 
     debug!(

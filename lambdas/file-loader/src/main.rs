@@ -133,7 +133,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                     }
                     if let Some(batch) = json.flush()? {
                         debug!("Writing a batch with {} rows", batch.num_rows());
-                        writer.write(batch).await?;
+                        writer.write(oxbow::write::augment_with_ds(batch)?).await?;
                         debug!("Appended values from {key} to: {table:?}");
                     }
                 }

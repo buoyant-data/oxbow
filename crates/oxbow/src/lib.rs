@@ -467,6 +467,21 @@ fn coerce_field(
                 _ => {}
             }
         }
+        DataType::List(field) => {
+            let coerced = coerce_field(field.clone());
+            let list_field = Field::new(field.name(), DataType::List(coerced), field.is_nullable());
+            return Arc::new(list_field);
+        }
+        DataType::Struct(fields) => {
+            let coerced: Vec<deltalake::arrow::datatypes::FieldRef> =
+                fields.iter().map(|f| coerce_field(f.clone())).collect();
+            let struct_field = Field::new(
+                field.name(),
+                DataType::Struct(coerced.iter().map(|f| f.as_ref().clone()).collect()),
+                field.is_nullable(),
+            );
+            return Arc::new(struct_field);
+        }
         _ => {}
     };
     field.clone()
@@ -1261,5 +1276,51 @@ mod tests {
             "Should have gotten false when adding a duplicate"
         );
         assert_eq!(mods.adds().len(), 1, "Why are there two? {mods:#?}");
+    }
+
+    #[test]
+    fn test_coerce_field_struct() {
+        use deltalake::arrow::datatypes::*;
+        let field = Field::new(
+            "meta",
+            DataType::Struct(
+                vec![
+                    Field::new(
+                        "timestamp_ns",
+                        DataType::Timestamp(TimeUnit::Nanosecond, None),
+                        true,
+                    ),
+                    Field::new(
+                        "timestamp_ms",
+                        DataType::Timestamp(TimeUnit::Microsecond, None),
+                        true,
+                    ),
+                    Field::new(
+                        "timestamps",
+                        DataType::List(Arc::new(Field::new(
+                            "item",
+                            DataType::Timestamp(TimeUnit::Nanosecond, None),
+                            true,
+                        ))),
+                        true,
+                    ),
+                    Field::new("id", DataType::Int32, true),
+                ]
+                .into(),
+            ),
+            true,
+        );
+
+        let coerced = coerce_field(Arc::new(field));
+        let formatted = format!("{}", coerced);
+
+        assert!(
+            formatted.contains("Timestamp(Microsecond"),
+            "Expected to find a Timestamp(Microsecond) in the coerced schema, got: {formatted}"
+        );
+        assert!(
+            !formatted.contains("Timestamp(Nanosecond"),
+            "Expected to not find a Timestamp(Nanosecond) in the coerced schema, got: {formatted}"
+        );
     }
 }

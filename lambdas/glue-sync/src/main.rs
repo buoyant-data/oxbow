@@ -389,10 +389,12 @@ mod tests {
             records: vec![message],
         };
         let lambda_event = LambdaEvent::new(event, lambda_runtime::Context::default());
-        std::env::set_var(
-            GLUE_REGEX_ENV,
-            r#"(?P<database>\w+)\/(?P<table>\w+)\/_delta_log\/.*.json"#,
-        );
+        unsafe {
+            std::env::set_var(
+                GLUE_REGEX_ENV,
+                r#"(?P<database>\w+)\/(?P<table>\w+)\/_delta_log\/.*.json"#,
+            );
+        }
         let result = function_handler(lambda_event).await;
         assert!(result.is_ok());
     }

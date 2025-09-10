@@ -476,7 +476,7 @@ fn coerce_field(
             let coerced = coerce_field(field.clone());
             let list_field = Field::new(field.name(), DataType::List(coerced), field.is_nullable());
             return Arc::new(list_field);
-        },
+        }
         DataType::Struct(fields) => {
             let coerced: Vec<deltalake::arrow::datatypes::FieldRef> =
                 fields.iter().map(|f| coerce_field(f.clone())).collect();
@@ -486,7 +486,7 @@ fn coerce_field(
                 field.is_nullable(),
             );
             return Arc::new(struct_field);
-        },
+        }
         _ => {}
     };
     field.clone()
@@ -832,7 +832,9 @@ mod tests {
     #[tokio::test]
     async fn attempt_to_convert_without_auth() {
         let region = std::env::var("AWS_REGION");
-        std::env::set_var("AWS_REGION", "custom");
+        unsafe {
+            std::env::set_var("AWS_REGION", "custom");
+        }
         deltalake::aws::register_handlers(None);
 
         let files: Vec<ObjectMeta> = vec![];
@@ -847,7 +849,9 @@ mod tests {
         assert!(result.is_err());
 
         if let Ok(region) = region {
-            std::env::set_var("AWS_REGION", region);
+            unsafe {
+                std::env::set_var("AWS_REGION", region);
+            }
         }
     }
 

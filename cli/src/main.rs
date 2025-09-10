@@ -75,7 +75,9 @@ mod tests {
         let mut flags = Flags::default();
         flags.table = None;
 
-        std::env::set_var("TABLE_LOCATION", "s3://test-bucket-from-env/table");
+        unsafe {
+            std::env::set_var("TABLE_LOCATION", "s3://test-bucket-from-env/table");
+        }
 
         let location = table_location(&flags).expect("Failed to load table location");
         assert_eq!(location, "s3://test-bucket-from-env/table");

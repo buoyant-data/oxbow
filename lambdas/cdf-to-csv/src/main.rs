@@ -7,10 +7,13 @@ use deltalake::datafusion::dataframe::DataFrameWriteOptions;
 use deltalake::datafusion::prelude::*;
 use deltalake::delta_datafusion::DeltaCdfTableProvider;
 use deltalake::{DeltaOps, DeltaResult};
-use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
-use object_store::prefix::PrefixStore;
+use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use object_store::ObjectStore;
+use object_store::PutPayload;
+use object_store::path::Path;
+use object_store::prefix::PrefixStore;
 use oxbow_lambda_shared::*;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::log::*;
 use url::Url;
@@ -98,13 +101,22 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
 
             let inserts = retrieve_inserts(&ctx).await?;
             let deletes = retrieve_deletes(&ctx).await?;
-            inserts
+
+            // write_csv will return a Vec,RecordBatch> which we can use for some rudimentary
+            // statistics
+            let inserts = inserts
                 .write_csv("cdfo://inserts", DataFrameWriteOptions::default(), None)
                 .await?;
-
-            deletes
+            let deletes = deletes
                 .write_csv("cdfo://deletes", DataFrameWriteOptions::default(), None)
                 .await?;
+
+            let completion = Completion {
+                inserts: inserts.iter().map(|rb| rb.num_rows()).sum(),
+                deletes: deletes.iter().map(|rb| rb.num_rows()).sum(),
+            };
+
+            mark_complete(store.clone(), &completion).await?;
         } else {
             warn!("Invoked but didn't find min/max trigger versions, something is fishy!");
         }
@@ -131,6 +143,7 @@ async fn retrieve_inserts(ctx: &SessionContext) -> DeltaResult<DataFrame> {
     ])?)
 }
 
+/// Compute the deletes from the change data feed associated with the [SessionContext]
 async fn retrieve_deletes(ctx: &SessionContext) -> DeltaResult<DataFrame> {
     let df = ctx
         .sql("SELECT * FROM cdf WHERE _change_type IN ('delete')")
@@ -143,12 +156,33 @@ async fn retrieve_deletes(ctx: &SessionContext) -> DeltaResult<DataFrame> {
     ])?)
 }
 
+/// Write a completion file to the given object store.
+///
+/// This is expected to be the prefix store associated with a werite
+async fn mark_complete(store: Arc<dyn ObjectStore>, completion: &Completion) -> DeltaResult<()> {
+    // Write a sentinel file once the writes have completed successfully
+    store
+        .put(
+            &Path::from("cdf-completion.json"),
+            serde_json::to_string(completion)
+                .expect("Failed to serialize Completion")
+                .into(),
+        )
+        .await?;
+    Ok(())
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct Completion {
+    inserts: usize,
+    deletes: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use futures::StreamExt;
-    use object_store::path::Path;
-    use object_store::ObjectStore;
+    use object_store::{GetResultPayload, ObjectStore};
 
     use deltalake::datafusion::{
         common::assert_batches_sorted_eq, dataframe::DataFrameWriteOptions,
@@ -161,6 +195,27 @@ mod tests {
         let ctx = SessionContext::new();
         Ok((ctx, cdf))
     }
+
+    #[tokio::test]
+    async fn test_mark_complete() -> DeltaResult<()> {
+        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let completion = Completion {
+            inserts: 1,
+            deletes: 0,
+        };
+        mark_complete(store.clone(), &completion).await?;
+        let _ = store.head(&Path::from("cdf-completion.json")).await?;
+
+        let result = store.get(&Path::from("cdf-completion.json")).await?;
+        let bytes = result.bytes().await?;
+        let s = String::from_utf8(bytes.to_vec()).expect("Failed to convert buffer");
+        let received: Completion = serde_json::from_str(&s)?;
+
+        assert_eq!(completion, received);
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_read_cdf_deletes() -> DeltaResult<()> {
         let (ctx, cdf) = cdf_test_setup().await?;

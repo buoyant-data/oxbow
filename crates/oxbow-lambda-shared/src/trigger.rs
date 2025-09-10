@@ -234,7 +234,9 @@ mod tests {
             assert_eq!(ChangeType::TransactionLog { version }, change);
         }
 
-        let (change, _) = ChangeType::from_key("/mytable/_change_data/cdc-00000-924d9ac7-21a9-4121-b067-a0a6517aa8ed.c000.snappy.parquet");
+        let (change, _) = ChangeType::from_key(
+            "/mytable/_change_data/cdc-00000-924d9ac7-21a9-4121-b067-a0a6517aa8ed.c000.snappy.parquet",
+        );
         assert_eq!(ChangeType::ChangeDataFeed, change);
 
         let (change, _) = ChangeType::from_key(

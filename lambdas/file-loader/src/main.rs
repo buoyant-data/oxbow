@@ -5,12 +5,12 @@
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
 use aws_lambda_events::sqs::SqsMessage;
+use deltalake::DeltaResult;
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::json::reader::ReaderBuilder;
-use deltalake::writer::{record_batch::RecordBatchWriter, DeltaWriter};
-use deltalake::DeltaResult;
+use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
 use lambda_runtime::tracing::{debug, error, info, trace};
-use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 
 use oxbow_lambda_shared::*;
 use oxbow_sqs::{ConsumerConfig, TimedConsumer};
@@ -138,7 +138,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                     }
                 }
                 RecordType::Unknown => {
-                    error!("file-loader was invoked for a file with an unknown suffix! Ignoring: {file_record:?}");
+                    error!(
+                        "file-loader was invoked for a file with an unknown suffix! Ignoring: {file_record:?}"
+                    );
                 }
             }
         }
@@ -147,7 +149,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
             let mbytes_to_consume: usize = str::parse(&bytes_to_consume)
                 .expect("BUFFER_MORE_BYTES_ALLOWED must be parseable as a uint64");
 
-            info!("Allocated {bytes_consumed} bytes thus far... I can only have {mbytes_to_consume}MB");
+            info!(
+                "Allocated {bytes_consumed} bytes thus far... I can only have {mbytes_to_consume}MB"
+            );
             if bytes_consumed >= (mbytes_to_consume * 1024 * 1024) {
                 info!("Finalizing after consuming {bytes_consumed} bytes of memory");
                 break;

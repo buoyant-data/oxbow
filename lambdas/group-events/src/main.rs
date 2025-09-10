@@ -1,7 +1,7 @@
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::{S3Event, S3EventRecord};
 use aws_sdk_sqs::types::SendMessageBatchRequestEntry;
-use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use tracing::log::*;
 use uuid::Uuid;
 

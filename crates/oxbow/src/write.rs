@@ -3,7 +3,7 @@ use deltalake::arrow::array::RecordBatch;
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::error::ArrowError;
 use deltalake::arrow::json::reader::ReaderBuilder;
-use deltalake::writer::{record_batch::RecordBatchWriter, DeltaWriter};
+use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
 use deltalake::{DeltaResult, DeltaTable};
 
 use std::io::Cursor;

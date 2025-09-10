@@ -3,7 +3,7 @@
 /// and appending them to the configured Delta table
 ///
 use aws_lambda_events::event::sqs::{SqsEvent, SqsMessage};
-use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use serde::Deserialize;
 use tracing::log::*;
 
@@ -38,7 +38,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 "The value of BUFFER_MORE_MESSAGES cannot be coerced into an int :thinking:",
             ));
         debug!("sqs-ingest configured to consume an additional {how_many_more} messages from SQS");
-        debug!("sqs-ingest will attempt to retrieve {how_many_more} messages in no more than {more_deadline_ms}ms to avoid timing out the function");
+        debug!(
+            "sqs-ingest will attempt to retrieve {how_many_more} messages in no more than {more_deadline_ms}ms to avoid timing out the function"
+        );
     }
 
     let mut consumer = TimedConsumer::new(

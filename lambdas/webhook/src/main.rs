@@ -1,7 +1,7 @@
 ///
 /// The webhook lambda can receive JSONL formatted events and append them to a pre-configured Delta
 /// table
-use lambda_http::{run, service_fn, tracing, Body, Error, Request, Response};
+use lambda_http::{Body, Error, Request, Response, run, service_fn, tracing};
 use tracing::log::*;
 
 use oxbow::write::*;
@@ -68,7 +68,9 @@ async fn main() -> Result<(), Error> {
     match std::env::var("DYNAMO_LOCK_TABLE_NAME") {
         Ok(_) => {}
         Err(_) => {
-            warn!("sqs-ingest SHOULD have `DYNAMO_LOCK_TABLE_NAME` set to a valid name, and should have AWS_S3_LOCKING_PROVIDER=dynamodb set so that concurrent writes can be performed safely.");
+            warn!(
+                "sqs-ingest SHOULD have `DYNAMO_LOCK_TABLE_NAME` set to a valid name, and should have AWS_S3_LOCKING_PROVIDER=dynamodb set so that concurrent writes can be performed safely."
+            );
         }
     }
 

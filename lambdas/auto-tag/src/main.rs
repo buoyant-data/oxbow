@@ -1,7 +1,7 @@
 use aws_lambda_events::event::s3::S3EventRecord;
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_sdk_s3::types::{Tag, Tagging};
-use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use tracing::log::*;
 
 use std::collections::HashMap;

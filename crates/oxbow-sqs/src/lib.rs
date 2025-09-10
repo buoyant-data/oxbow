@@ -192,7 +192,9 @@ impl TimedConsumer {
 impl std::ops::Drop for TimedConsumer {
     fn drop(&mut self) {
         if !self.receive_handles.is_empty() {
-            error!("The TimedConsumer was not flushed before being dropped! This causes data duplication, you have to flush!");
+            error!(
+                "The TimedConsumer was not flushed before being dropped! This causes data duplication, you have to flush!"
+            );
         }
     }
 }

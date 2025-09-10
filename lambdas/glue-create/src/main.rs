@@ -1,6 +1,6 @@
 use aws_lambda_events::s3::S3EventRecord;
 use aws_lambda_events::sqs::SqsEvent;
-use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use regex::Regex;
 use tracing::log::*;
 

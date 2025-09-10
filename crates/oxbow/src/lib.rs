@@ -1,3 +1,4 @@
+use deltalake::ObjectStore;
 ///
 /// The lib module contains the business logic of oxbow, regardless of the interface implementation
 ///
@@ -5,14 +6,13 @@ use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::kernel::models::{Schema, StructField};
 use deltalake::kernel::*;
 use deltalake::logstore::ObjectStoreRef;
-use deltalake::logstore::{logstore_for, LogStoreRef};
+use deltalake::logstore::{LogStoreRef, logstore_for};
 use deltalake::operations::create::CreateBuilder;
 use deltalake::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
 use deltalake::parquet::file::metadata::ParquetMetaData;
 use deltalake::protocol::*;
-use deltalake::ObjectStore;
 use deltalake::{DeltaResult, DeltaTable, DeltaTableError, ObjectMeta};
 use futures::StreamExt;
 use tracing::log::*;
@@ -138,7 +138,9 @@ pub async fn discover_parquet_files(
                                 debug!("Discovered file: {:?}", meta);
                                 result.push(meta);
                             } else {
-                                warn!("Was asked to discover parquet files on what appears to already be a table, and found checkpoint files: {filename}");
+                                warn!(
+                                    "Was asked to discover parquet files on what appears to already be a table, and found checkpoint files: {filename}"
+                                );
                             }
                         }
                     }
@@ -444,34 +446,37 @@ fn coerce_field(
 ) -> deltalake::arrow::datatypes::FieldRef {
     use deltalake::arrow::datatypes::*;
     match field.data_type() {
-        DataType::Timestamp(unit, tz) => {
-            match unit {
-                TimeUnit::Nanosecond => {
-                    warn!("Given a nanosecond precision which we will cowardly pretend is microseconds");
-                    let field = Field::new(
-                        field.name(),
-                        DataType::Timestamp(TimeUnit::Microsecond, tz.clone()),
-                        field.is_nullable(),
-                    );
-                    return Arc::new(field);
-                }
-                TimeUnit::Millisecond => {
-                    warn!("I have been asked to create a table with a Timestamp(millis) column ({}) that I cannot handle. Cowardly setting the Delta schema to pretend it is a Timestamp(micros)", field.name());
-                    let field = Field::new(
-                        field.name(),
-                        DataType::Timestamp(TimeUnit::Microsecond, tz.clone()),
-                        field.is_nullable(),
-                    );
-                    return Arc::new(field);
-                }
-                _ => {}
+        DataType::Timestamp(unit, tz) => match unit {
+            TimeUnit::Nanosecond => {
+                warn!(
+                    "Given a nanosecond precision which we will cowardly pretend is microseconds"
+                );
+                let field = Field::new(
+                    field.name(),
+                    DataType::Timestamp(TimeUnit::Microsecond, tz.clone()),
+                    field.is_nullable(),
+                );
+                return Arc::new(field);
             }
-        }
+            TimeUnit::Millisecond => {
+                warn!(
+                    "I have been asked to create a table with a Timestamp(millis) column ({}) that I cannot handle. Cowardly setting the Delta schema to pretend it is a Timestamp(micros)",
+                    field.name()
+                );
+                let field = Field::new(
+                    field.name(),
+                    DataType::Timestamp(TimeUnit::Microsecond, tz.clone()),
+                    field.is_nullable(),
+                );
+                return Arc::new(field);
+            }
+            _ => {}
+        },
         DataType::List(field) => {
             let coerced = coerce_field(field.clone());
             let list_field = Field::new(field.name(), DataType::List(coerced), field.is_nullable());
             return Arc::new(list_field);
-        }
+        },
         DataType::Struct(fields) => {
             let coerced: Vec<deltalake::arrow::datatypes::FieldRef> =
                 fields.iter().map(|f| coerce_field(f.clone())).collect();
@@ -481,7 +486,7 @@ fn coerce_field(
                 field.is_nullable(),
             );
             return Arc::new(struct_field);
-        }
+        },
         _ => {}
     };
     field.clone()

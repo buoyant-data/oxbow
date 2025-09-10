@@ -5,7 +5,7 @@
 /// function glues that into the Lambda runtime
 use aws_lambda_events::sqs::SqsEvent;
 use deltalake::DeltaTableError;
-use lambda_runtime::{service_fn, Error, LambdaEvent};
+use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::Value;
 use tracing::log::*;
 use url::Url;

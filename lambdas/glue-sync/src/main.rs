@@ -4,9 +4,9 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_sdk_glue::types::{Column, StorageDescriptor, Table, TableInput};
-use deltalake::kernel::{DataType, PrimitiveType};
 use deltalake::DeltaTable;
-use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
+use deltalake::kernel::{DataType, PrimitiveType};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use regex::Regex;
 use tracing::log::*;
 

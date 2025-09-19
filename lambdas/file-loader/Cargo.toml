@@ -6,6 +6,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+bytes = "*"
 lambda_runtime = { version = "0.11" }
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
@@ -14,8 +15,8 @@ oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
 deltalake = { workspace = true }
-mimalloc = { workspace = true }
 tokio = { workspace = true }
 aws-config = "1.5.10"
 aws-sdk-s3 = "1.60.0"
+stats_alloc = "0.1"
 tracing-subscriber = { workspace = true }

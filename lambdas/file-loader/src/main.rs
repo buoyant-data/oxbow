@@ -6,23 +6,27 @@ use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
 use aws_lambda_events::sqs::SqsMessage;
 use deltalake::DeltaResult;
-use deltalake::arrow::datatypes::Schema as ArrowSchema;
-use deltalake::arrow::json::reader::ReaderBuilder;
-use deltalake::kernel::engine::arrow_conversion::TryIntoArrow;
+use deltalake::arrow::json::reader::{Decoder, ReaderBuilder};
 use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
 use lambda_runtime::tracing::{debug, error, info, trace};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
+use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 
 use oxbow_lambda_shared::*;
 use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use tokio::io::AsyncBufReadExt;
+use tokio::sync::Mutex;
 
-use mimalloc::MiMalloc;
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
-
+use std::alloc::System;
 use std::env;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+/// The setting of the global allocator here with stats alloc is intended to allow the file-loader
+/// lambda to load as many files from S3 as it can tolerate given the memory available on the
+/// system.
+#[global_allocator]
+static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 /// The type of data file which file-loader can load
 #[derive(Clone, Debug, PartialEq)]
@@ -33,29 +37,22 @@ enum RecordType {
     Unknown,
 }
 
-/// Simple function for extracting the necessary [S3EventRecord] structs from a given [SqsEvent]
-///
-/// This utilizes the `UNWRAP_SNS_ENVELOPE` environment variable to handle SNS-encoded bucket
-/// notifications
-fn extract_records_from(
-    events: impl IntoIterator<Item = SqsEvent>,
-) -> DeltaResult<Vec<S3EventRecord>> {
-    let mut records = vec![];
-    for event in events {
-        let pieces = match std::env::var("UNWRAP_SNS_ENVELOPE") {
-            Ok(_) => s3_from_sns(event)?,
-            Err(_) => s3_from_sqs(event)?,
-        };
-        records.extend(pieces);
-    }
-    Ok(records_with_url_decoded_keys(&records))
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    deltalake::aws::register_handlers(None);
+    tracing::init_default_subscriber();
+    let _ =
+        env::var("DELTA_TABLE_URI").expect("The `DELTA_TABLE_URI` must be set in the environment");
+    info!("Starting file-loader");
+
+    run(service_fn(function_handler)).await
 }
 
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
-    let fn_start = Instant::now();
     debug!("Receiving event: {event:?}");
+    let mut region = Region::new(GLOBAL);
     let mut records = extract_records_from(vec![event.payload])?;
 
     info!("Processing {} bucket notifications", records.len());
@@ -70,6 +67,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         .await
         .expect("Failed to open the Delta table!");
     let mut writer = RecordBatchWriter::for_table(&table)?;
+    let stats = region.change_and_reset();
+    let mut bytes_consumed: usize = stats.bytes_allocated - stats.bytes_deallocated;
+    info!("table opened, current memory usage: {}", bytes_consumed);
 
     let config = aws_config::load_from_env().await;
     let client = aws_sdk_s3::Client::new(&config);
@@ -88,7 +88,6 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 .expect("Failed to compute a 64-bit deadline"),
         ),
     );
-    let mut bytes_consumed: usize = 0;
 
     loop {
         let next_up = consumer.next().await?;
@@ -114,34 +113,23 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         // Each iteration we'll drain the records to make sure everything is _gotten_ before
         // continuing
         for file_record in records.drain(..) {
-            let key = file_record
-                .s3
-                .object
-                .key
-                .as_ref()
-                .expect("Failed to extract key from record");
             match suffix_from_record(&file_record) {
                 RecordType::Jsonl => {
-                    debug!("Preparing to load filue {file_record:?}");
-                    let mut response = client
+                    debug!("Preparing to load file {file_record:?}");
+                    let response = client
                         .get_object()
                         .bucket(file_record.s3.bucket.name.clone().unwrap())
                         .key(file_record.s3.object.key.as_ref().unwrap())
                         .send()
                         .await?;
                     info!("Attempting to read bytes from {file_record:?}");
-                    let schema: ArrowSchema = table.snapshot()?.schema().try_into_arrow()?;
+                    let mut json = ReaderBuilder::new(writer.arrow_schema())
+                        .with_batch_size(10_000)
+                        .build_decoder()?;
 
-                    let mut json = ReaderBuilder::new(schema.into()).build_decoder()?;
-                    while let Some(bytes) = response.body.try_next().await? {
-                        bytes_consumed += bytes.len();
-                        json.decode(&bytes)?;
-                    }
-                    if let Some(batch) = json.flush()? {
-                        debug!("Writing a batch with {} rows", batch.num_rows());
-                        writer.write(oxbow::write::augment_with_ds(batch)?).await?;
-                        debug!("Appended values from {key} to: {table:?}");
-                    }
+                    let stream = Arc::new(Mutex::new(response.body.into_async_read()));
+                    let batches = deserialize_bytes(stream, &mut json, &mut writer).await?;
+                    debug!("Deserialized {batches} RecordBatches and sent ot the DeltaWriter");
                 }
                 RecordType::Unknown => {
                     error!(
@@ -150,6 +138,12 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 }
             }
         }
+        let stats = region.change_and_reset();
+        bytes_consumed += stats.bytes_allocated - stats.bytes_deallocated;
+        info!(
+            "loop of writes, current memory usage: {bytes_consumed} but {} was allocated during the loop",
+            stats.bytes_allocated
+        );
 
         if let Ok(bytes_to_consume) = std::env::var("BUFFER_MORE_MBYTES_ALLOWED") {
             let mbytes_to_consume: usize = str::parse(&bytes_to_consume)
@@ -173,28 +167,35 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    deltalake::aws::register_handlers(None);
-    tracing::init_default_subscriber();
-    let _ =
-        env::var("DELTA_TABLE_URI").expect("The `DELTA_TABLE_URI` must be set in the environment");
-    info!("Starting file-loader");
-
-    run(service_fn(function_handler)).await
+/// Simple function for extracting the necessary [S3EventRecord] structs from a given [SqsEvent]
+///
+/// This utilizes the `UNWRAP_SNS_ENVELOPE` environment variable to handle SNS-encoded bucket
+/// notifications
+fn extract_records_from(
+    events: impl IntoIterator<Item = SqsEvent>,
+) -> DeltaResult<Vec<S3EventRecord>> {
+    let mut records = vec![];
+    for event in events {
+        let pieces = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+            Ok(_) => s3_from_sns(event)?,
+            Err(_) => s3_from_sqs(event)?,
+        };
+        records.extend(pieces);
+    }
+    Ok(records_with_url_decoded_keys(&records))
 }
 
 /// Extract the suffix from the given [S3EventRecord] for matching and data loading
 fn suffix_from_record(record: &S3EventRecord) -> RecordType {
-    if let Some(key) = record.s3.object.key.as_ref() {
-        if key.ends_with(".jsonl") || key.ends_with(".json") {
-            return RecordType::Jsonl;
-        }
+    if let Some(key) = record.s3.object.key.as_ref()
+        && (key.ends_with(".jsonl") || key.ends_with(".json"))
+    {
+        return RecordType::Jsonl;
     }
-    if let Some(key) = record.s3.object.url_decoded_key.as_ref() {
-        if key.ends_with(".jsonl") || key.ends_with(".json") {
-            return RecordType::Jsonl;
-        }
+    if let Some(key) = record.s3.object.url_decoded_key.as_ref()
+        && (key.ends_with(".jsonl") || key.ends_with(".json"))
+    {
+        return RecordType::Jsonl;
     }
     RecordType::Unknown
 }
@@ -213,20 +214,118 @@ fn convert_from_sqs(message: oxbow_sqs::Message) -> SqsMessage {
     }
 }
 
+/// Deserialize the bytes which have been provided by the input and write them into the
+/// [RecordBatchWriter]
+///
+/// This exists as a separate function to ensure that it can be more granularly tested. It will
+/// **not** however flush the [RecordBatchWriter] and therefore it will not create the eventual
+/// commit required for the Delta table
+async fn deserialize_bytes(
+    reader: Arc<Mutex<impl tokio::io::AsyncBufRead + std::marker::Unpin>>,
+    decoder: &mut Decoder,
+    writer: &mut RecordBatchWriter,
+) -> DeltaResult<u64> {
+    let mut batches = 0;
+
+    loop {
+        let mut guard = reader.lock().await;
+        let buf = guard.fill_buf().await?;
+        if buf.is_empty() {
+            break; // nothing more to read
+        }
+        // Unlock the reader  for later
+        let to_read = buf.len();
+        let mut have_read;
+
+        loop {
+            have_read = decoder.decode(buf)?;
+
+            if have_read <= to_read {
+                // The decoder is full, we need a flush to continue
+                break;
+            }
+        }
+        drop(guard);
+        reader.lock().await.consume(have_read);
+
+        if !decoder.has_partial_record() {
+            match decoder.flush()? {
+                Some(batch) => {
+                    debug!("Writing a batch with {} rows", batch.num_rows());
+                    writer.write(oxbow::write::augment_with_ds(batch)?).await?;
+                    batches += 1;
+                }
+                // No more batches, exit!
+                None => break,
+            }
+        }
+    }
+    Ok(batches)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use aws_lambda_events::s3::{S3Entity, S3EventRecord, S3Object};
+    use deltalake::arrow::array::RecordBatch;
+    use deltalake::arrow::datatypes::*;
+    use deltalake::datafusion::prelude::SessionContext;
+    use std::fs::File;
+    use std::io::BufReader;
     use std::sync::Arc;
+
+    /// The default [RecordBatch] size in arrow is 1024 when reading from JSON, which always trips
+    /// me up when deserializing JSON.
+    ///
+    /// This test is to make sure the reader code will properly deserialize a file with more than
+    /// 1024 rows
+    #[tokio::test]
+    async fn test_read_a_wee_bit_more_than_1024() -> anyhow::Result<()> {
+        let buf = tokio::fs::File::open("../../tests/data/bigger-than-a-batch.jsonl").await?;
+        let reader = tokio::io::BufReader::new(buf);
+
+        let mut table = deltalake::operations::DeltaOps::new_in_memory()
+            .create()
+            .with_column(
+                "description",
+                deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
+                true,
+                None,
+            )
+            .await?;
+        let mut writer = RecordBatchWriter::for_table(&table)?;
+        let mut json = ReaderBuilder::new(writer.arrow_schema())
+            // For the purposes of this test, arbitrarily setting a low number to ensure flushing
+            // is happening
+            .with_batch_size(10)
+            .build_decoder()?;
+        let reader = Arc::new(Mutex::new(reader));
+
+        let result = deserialize_bytes(reader, &mut json, &mut writer).await;
+        assert!(
+            result.is_ok(),
+            "Somehow the deserialize call failed? {result:#?}"
+        );
+        if let Ok(batches) = result {
+            assert_eq!(batches, 110, "Expecting two batches to have been flushed");
+        }
+        let version = writer.flush_and_commit(&mut table).await?;
+
+        table.load().await?;
+
+        assert_eq!(table.version(), Some(version));
+
+        let ctx = SessionContext::new();
+        ctx.register_table("test", Arc::new(table))?;
+        let count = ctx.sql("SELECT * FROM test").await?.count().await?;
+        assert_eq!(count, 1100);
+        Ok(())
+    }
 
     /// This test is largely just for sanity checking the [ReaderBuilder] approach for
     /// deserializing line-delimited JSON
     #[test]
     fn test_json_deserialization() -> anyhow::Result<()> {
-        use deltalake::arrow::array::RecordBatch;
-        use deltalake::arrow::datatypes::*;
-        use std::fs::File;
-        use std::io::BufReader;
         let buf = File::open("../../tests/data/senators.jsonl")?;
         let reader = BufReader::new(buf);
 

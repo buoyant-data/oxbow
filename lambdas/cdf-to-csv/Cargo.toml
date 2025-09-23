@@ -9,8 +9,8 @@ homepage.workspace = true
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
 chrono = { workspace = true }
 lambda_runtime = "0.14.2"
+deltalake = { workspace = true, features = ["s3", "json", "datafusion"] }
 object_store = { version = "0.12.1", features = ["cloud"]}
-deltalake = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

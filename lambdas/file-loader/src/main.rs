@@ -271,8 +271,9 @@ mod tests {
     use super::*;
     use aws_lambda_events::s3::{S3Entity, S3EventRecord, S3Object};
     use deltalake::arrow::array::RecordBatch;
-    use deltalake::arrow::datatypes::*;
+    use deltalake::arrow::datatypes::{DataType as ArrowDataType, Field, Schema};
     use deltalake::datafusion::prelude::SessionContext;
+    use deltalake::kernel::{DataType, PrimitiveType};
     use std::fs::File;
     use std::io::BufReader;
     use std::sync::Arc;
@@ -291,19 +292,14 @@ mod tests {
             .create()
             .with_column(
                 "startdate",
-                deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
+                DataType::Primitive(PrimitiveType::String),
                 true,
                 None,
             )
-            .with_column(
-                "ds",
-                deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
-                true,
-                None,
-            )
+            .with_column("ds", DataType::Primitive(PrimitiveType::String), true, None)
             .with_column(
                 "description",
-                deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
+                DataType::Primitive(PrimitiveType::String),
                 true,
                 None,
             )
@@ -329,7 +325,7 @@ mod tests {
 
         table.load().await?;
 
-        assert_eq!(table.version(), Some(version));
+        assert_eq!(table.version(), version);
 
         let ctx = SessionContext::new();
         ctx.register_table("test", Arc::new(table))?;
@@ -348,9 +344,9 @@ mod tests {
         // Normally the schema would come from the Delta table but for this test, providing an
         // arrow schema manually
         let schema = Arc::new(Schema::new(vec![
-            Field::new("current", DataType::Boolean, false),
-            Field::new("description", DataType::Utf8, false),
-            Field::new("party", DataType::Utf8, false),
+            Field::new("current", ArrowDataType::Boolean, false),
+            Field::new("description", ArrowDataType::Utf8, false),
+            Field::new("party", ArrowDataType::Utf8, false),
         ]));
 
         let json = deltalake::arrow::json::ReaderBuilder::new(schema).build(reader)?;

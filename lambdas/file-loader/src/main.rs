@@ -290,11 +290,24 @@ mod tests {
         let mut table = deltalake::operations::DeltaOps::new_in_memory()
             .create()
             .with_column(
+                "startdate",
+                deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
+                true,
+                None,
+            )
+            .with_column(
+                "ds",
+                deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
+                true,
+                None,
+            )
+            .with_column(
                 "description",
                 deltalake::DataType::Primitive(deltalake::PrimitiveType::String),
                 true,
                 None,
             )
+            .with_partition_columns(vec!["startdate"])
             .await?;
         let mut writer = RecordBatchWriter::for_table(&table)?;
         let mut json = ReaderBuilder::new(writer.arrow_schema())

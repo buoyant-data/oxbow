@@ -67,6 +67,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         .await
         .expect("Failed to open the Delta table!");
     let mut writer = RecordBatchWriter::for_table(&table)?;
+    let schema = writer.arrow_schema();
+    info!("Schema for destination table: {schema:?}");
     let stats = region.change_and_reset();
     let mut bytes_consumed: usize = stats.bytes_allocated - stats.bytes_deallocated;
     info!("table opened, current memory usage: {}", bytes_consumed);
@@ -123,13 +125,13 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                         .send()
                         .await?;
                     info!("Attempting to read bytes from {file_record:?}");
-                    let mut json = ReaderBuilder::new(writer.arrow_schema())
+                    let mut json = ReaderBuilder::new(schema.clone())
                         .with_batch_size(10_000)
                         .build_decoder()?;
 
                     let stream = Arc::new(Mutex::new(response.body.into_async_read()));
                     let batches = deserialize_bytes(stream, &mut json, &mut writer).await?;
-                    debug!("Deserialized {batches} RecordBatches and sent ot the DeltaWriter");
+                    info!("Deserialized {batches} RecordBatches and sent ot the DeltaWriter");
                 }
                 RecordType::Unknown => {
                     error!(
@@ -159,6 +161,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         }
     }
 
+    info!("Attempting to flush.. {table:?}");
     let version = writer.flush_and_commit(&mut table).await?;
     info!("Successfully flushed v{version} via append_batches to Delta table");
     debug!("Flushing consumer to wrap up the execution");

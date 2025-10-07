@@ -1294,7 +1294,7 @@ mod tests {
 
     #[test]
     fn test_coerce_field_struct() {
-        use deltalake::arrow::datatypes::*;
+        use deltalake::arrow::datatypes::{DataType, Field, TimeUnit};
         let field = Field::new(
             "meta",
             DataType::Struct(
@@ -1326,15 +1326,40 @@ mod tests {
         );
 
         let coerced = coerce_field(Arc::new(field));
-        let formatted = format!("{}", coerced);
+        let arrow_schema = ArrowSchema::new(vec![coerced]);
 
-        assert!(
-            formatted.contains("Timestamp(Microsecond"),
-            "Expected to find a Timestamp(Microsecond) in the coerced schema, got: {formatted}"
+        let delta_schema =
+            Schema::try_from(&arrow_schema).expect("Failed to convert to delta schema");
+        let field = delta_schema.fields().next().expect("No fields found");
+
+        assert_eq!(field.name(), "meta");
+        assert_eq!(
+            field.data_type().to_string(),
+            "struct<timestamp_ns: timestamp_ntz, timestamp_ms: timestamp_ntz, timestamps: array<timestamp_ntz>, id: integer>"
         );
-        assert!(
-            !formatted.contains("Timestamp(Nanosecond"),
-            "Expected to not find a Timestamp(Nanosecond) in the coerced schema, got: {formatted}"
+    }
+
+    #[test]
+    fn test_coerce_field_list() {
+        use deltalake::arrow::datatypes::{DataType, Field, TimeUnit};
+        let field = Field::new(
+            "timestamps",
+            DataType::List(Arc::new(Field::new(
+                "array_item",
+                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                true,
+            ))),
+            true,
         );
+
+        let coerced = coerce_field(Arc::new(field));
+        let arrow_schema = ArrowSchema::new(vec![coerced]);
+
+        let delta_schema =
+            Schema::try_from(&arrow_schema).expect("Failed to convert to delta schema");
+        let field = delta_schema.fields().next().expect("No fields found");
+
+        assert_eq!(field.name(), "timestamps");
+        assert_eq!(field.data_type().to_string(), "array<timestamp_ntz>");
     }
 }

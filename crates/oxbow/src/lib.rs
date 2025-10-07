@@ -222,7 +222,11 @@ pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaRes
     if actions.is_empty() {
         return Ok(table.version());
     }
-    let commit = CommitProperties::default();
+    let commit = CommitProperties::default()
+        // Turn off cleanup of expired logs. After each commit, versions are
+        // scanned (ListObject on s3) to clean up expired entries. This creates
+        // significant overhead when there are many versions on each commit.
+        .with_cleanup_expired_logs(Some(false));
     let pre_commit = CommitBuilder::from(commit)
         .with_actions(actions.to_vec())
         .build(

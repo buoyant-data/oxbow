@@ -472,10 +472,11 @@ fn coerce_field(
             }
             _ => {}
         },
-        DataType::List(field) => {
-            let coerced = coerce_field(field.clone());
-            let list_field = Field::new(field.name(), DataType::List(coerced), field.is_nullable());
-            return Arc::new(list_field);
+        DataType::List(list_field) => {
+            let coerced = coerce_field(list_field.clone());
+            let coerced_field =
+                Field::new(field.name(), DataType::List(coerced), field.is_nullable());
+            return Arc::new(coerced_field);
         }
         DataType::Struct(fields) => {
             let coerced: Vec<deltalake::arrow::datatypes::FieldRef> =

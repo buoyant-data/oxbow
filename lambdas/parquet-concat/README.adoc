@@ -1,0 +1,57 @@
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:toc: macro
+
+= Parquet Concat
+
+The `parquet-concat` is an S3 Event Notifications triggered Lambda whose responsibility is to read multiple Parquet files and concatenate them together.
+
+This is helpful to speed up oxbow ingestion by reducing the number of small versions.
+
+toc::[]
+
+== Environment Variables
+
+|===
+
+| Name | Default Value | Notes
+
+| `INPUT_BUCKET`
+|
+| S3 bucket name where input Parquet files are located
+
+| `INPUT_PREFIX`
+|
+| S3 prefix/path that should be removed from the input
+
+| `OUTPUT_BUCKET`
+|
+| S3 bucket name where consolidated Parquet files will be written
+
+| `OUTPUT_PREFIX`
+|
+| S3 prefix/path where consolidated files will be stored
+
+| `BUFFER_MORE_QUEUE_URL`
+|
+| SQS queue URL for buffering additional messages beyond the initial Lambda trigger
+
+| `BUFFER_MORE_MBYTES_ALLOWED`
+|
+| Memory limit in MB for processing additional messages (optional)
+
+| `RUST_LOG`
+| `error`
+| Log level (default: `error`). Can be scoped to specific modules, e.g. `oxbow=debug`
+
+| `UNWRAP_SNS_ENVELOPE`
+| _null_
+| Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
+
+|===
+

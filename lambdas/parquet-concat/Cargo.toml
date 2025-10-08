@@ -1,0 +1,29 @@
+[package]
+name = "parquet-concat"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+bytes = "*"
+lambda_runtime = { version = "0.11" }
+oxbow = { path = "../../crates/oxbow" }
+oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+oxbow-sqs = { path = "../../crates/oxbow-sqs" }
+
+anyhow = { workspace = true }
+aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
+deltalake = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { version = "0.1.17" }
+aws-config = "1.5.10"
+aws-sdk-s3 = "1.60.0"
+object_store = { version = "0.12.1", features = ["cloud"]}
+parquet = { version = "55.0.0", features = ["async", "object_store"] }
+stats_alloc = "0.1"
+tracing-subscriber = { workspace = true }
+uuid = { version = "1.6.1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.8"

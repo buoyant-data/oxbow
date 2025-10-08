@@ -13,9 +13,11 @@
 
 use aws_sdk_sqs::types::DeleteMessageBatchRequestEntry;
 pub use aws_sdk_sqs::types::Message;
+use stats_alloc::Region;
 use tracing::log::*;
 use url::Url;
 
+use std::alloc::System;
 use std::time::{Duration, Instant};
 
 // How can I handle this:
@@ -51,8 +53,8 @@ impl Default for ConsumerConfig {
 
 /// A [TimedConsumer] helps consume from Amazon SQS up until a certain threshold of time, typically
 /// used to stop consuming messages at a certain amount of the Lambda's runtime
-#[derive(Clone, Debug)]
-pub struct TimedConsumer {
+#[derive(Debug)]
+pub struct TimedConsumer<'a> {
     config: ConsumerConfig,
     /// The [Instant] when this consumer was created. This value is used to determine when to
     /// finalize based on the configured deadline
@@ -66,9 +68,14 @@ pub struct TimedConsumer {
     pub limit: Option<u64>,
     // Collection of needed to delete messages upon finalization
     receive_handles: Vec<DeleteMessageBatchRequestEntry>,
+
+    // Optional memory limit
+    memory_limit_region: Option<Region<'a, System>>,
+    memory_limit_bytes: Option<usize>,
+    bytes_consumed: usize,
 }
 
-impl TimedConsumer {
+impl<'a> TimedConsumer<'a> {
     /// Initialize the [TimedConsumer]
     ///
     /// `config` is a provided [aws_config::SdkConfig] to be used for interacting with AWS services like SQS
@@ -86,6 +93,10 @@ impl TimedConsumer {
             start: Instant::now(),
             limit: None,
             receive_handles: vec![],
+
+            memory_limit_region: None,
+            memory_limit_bytes: None,
+            bytes_consumed: 0,
         }
     }
 
@@ -121,6 +132,25 @@ impl TimedConsumer {
         if self.start.elapsed() >= self.deadline {
             debug!("The deadline has elapsed, returning from TimedConsumer");
             return Ok(None);
+        }
+
+        if let Some(ref mut region) = self.memory_limit_region {
+            let stats = region.change_and_reset();
+            self.bytes_consumed += stats.bytes_allocated - stats.bytes_deallocated;
+            info!(
+                "current memory usage: {} bytes but {} was allocated since last check",
+                self.bytes_consumed, stats.bytes_allocated
+            );
+
+            if let Some(limit) = self.memory_limit_bytes {
+                if self.bytes_consumed >= limit {
+                    info!(
+                        "Memory limit of {}MB reached, stopping consumption",
+                        limit / 1024 / 1024
+                    );
+                    return Ok(None);
+                }
+            }
         }
 
         let visibility_timeout: i32 = self
@@ -187,9 +217,17 @@ impl TimedConsumer {
         self.receive_handles = vec![];
         Ok(())
     }
+
+    pub fn set_memory_limit(&mut self, mut region: Region<'a, System>, limit: usize) {
+        let stats = region.change_and_reset();
+        self.bytes_consumed = stats.bytes_allocated - stats.bytes_deallocated;
+
+        self.memory_limit_region = Some(region);
+        self.memory_limit_bytes = Some(limit);
+    }
 }
 
-impl std::ops::Drop for TimedConsumer {
+impl std::ops::Drop for TimedConsumer<'_> {
     fn drop(&mut self) {
         if !self.receive_handles.is_empty() {
             error!(

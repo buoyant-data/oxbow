@@ -4,7 +4,6 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
-use aws_lambda_events::sqs::SqsMessage;
 use deltalake::DeltaResult;
 use deltalake::arrow::json::reader::{Decoder, ReaderBuilder};
 use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
@@ -52,7 +51,7 @@ async fn main() -> Result<(), Error> {
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let table_uri = std::env::var("DELTA_TABLE_URI").expect("Failed to get `DELTA_TABLE_URI`");
     debug!("Receiving event: {event:?}");
-    let mut region = Region::new(GLOBAL);
+    let region = Region::new(GLOBAL);
     let mut records = extract_records_from(vec![event.payload])?;
 
     info!("Processing {} bucket notifications", records.len());
@@ -69,9 +68,6 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let mut writer = RecordBatchWriter::for_table(&table)?;
     let schema = writer.arrow_schema();
     info!("Schema for destination table: {schema:?}");
-    let stats = region.change_and_reset();
-    let mut bytes_consumed: usize = stats.bytes_allocated - stats.bytes_deallocated;
-    info!("table opened, current memory usage: {}", bytes_consumed);
 
     let config = aws_config::load_from_env().await;
     let client = aws_sdk_s3::Client::new(&config);
@@ -90,6 +86,16 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 .expect("Failed to compute a 64-bit deadline"),
         ),
     );
+    if let Ok(bytes_to_consume) = std::env::var("BUFFER_MORE_MBYTES_ALLOWED") {
+        consumer.set_memory_limit(
+            region,
+            bytes_to_consume
+                .parse::<usize>()
+                .expect("BUFFER_MORE_MBYTES_ALLOWED must be parseable as a uint64")
+                * 1024
+                * 1024,
+        );
+    }
 
     loop {
         let next_up = consumer.next().await?;
@@ -140,25 +146,6 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 }
             }
         }
-        let stats = region.change_and_reset();
-        bytes_consumed += stats.bytes_allocated - stats.bytes_deallocated;
-        info!(
-            "loop of writes, current memory usage: {bytes_consumed} but {} was allocated during the loop",
-            stats.bytes_allocated
-        );
-
-        if let Ok(bytes_to_consume) = std::env::var("BUFFER_MORE_MBYTES_ALLOWED") {
-            let mbytes_to_consume: usize = str::parse(&bytes_to_consume)
-                .expect("BUFFER_MORE_BYTES_ALLOWED must be parseable as a uint64");
-
-            info!(
-                "Allocated {bytes_consumed} bytes thus far... I can only have {mbytes_to_consume}MB"
-            );
-            if bytes_consumed >= (mbytes_to_consume * 1024 * 1024) {
-                info!("Finalizing after consuming {bytes_consumed} bytes of memory");
-                break;
-            }
-        }
     }
 
     info!("Attempting to flush.. {table:?}");
@@ -168,24 +155,6 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     consumer.flush().await?;
 
     Ok(())
-}
-
-/// Simple function for extracting the necessary [S3EventRecord] structs from a given [SqsEvent]
-///
-/// This utilizes the `UNWRAP_SNS_ENVELOPE` environment variable to handle SNS-encoded bucket
-/// notifications
-fn extract_records_from(
-    events: impl IntoIterator<Item = SqsEvent>,
-) -> DeltaResult<Vec<S3EventRecord>> {
-    let mut records = vec![];
-    for event in events {
-        let pieces = match std::env::var("UNWRAP_SNS_ENVELOPE") {
-            Ok(_) => s3_from_sns(event)?,
-            Err(_) => s3_from_sqs(event)?,
-        };
-        records.extend(pieces);
-    }
-    Ok(records_with_url_decoded_keys(&records))
 }
 
 /// Extract the suffix from the given [S3EventRecord] for matching and data loading
@@ -201,20 +170,6 @@ fn suffix_from_record(record: &S3EventRecord) -> RecordType {
         return RecordType::Jsonl;
     }
     RecordType::Unknown
-}
-
-/// Convert an [oxbow_sqs::Message] into an [SqsMessage]
-fn convert_from_sqs(message: oxbow_sqs::Message) -> SqsMessage {
-    SqsMessage {
-        message_id: message.message_id,
-        receipt_handle: message.receipt_handle,
-        body: message.body,
-        md5_of_body: message.md5_of_body,
-        md5_of_message_attributes: message.md5_of_message_attributes,
-        // Translating message_attributes structs is an exercise for later
-        //attributes: message.message_attributes.unwrap_or_default()
-        ..Default::default()
-    }
 }
 
 /// Deserialize the bytes which have been provided by the input and write them into the
@@ -270,6 +225,7 @@ async fn deserialize_bytes(
 mod tests {
     use super::*;
     use aws_lambda_events::s3::{S3Entity, S3EventRecord, S3Object};
+    use aws_lambda_events::sqs::SqsMessage;
     use deltalake::arrow::array::RecordBatch;
     use deltalake::arrow::datatypes::{DataType as ArrowDataType, Field, Schema};
     use deltalake::datafusion::prelude::SessionContext;

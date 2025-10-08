@@ -238,6 +238,41 @@ fn into_object_meta(s3object: &S3Object, prune_prefix: Option<&str>) -> ObjectMe
     }
 }
 
+/// Simple function for extracting the necessary [S3EventRecord] structs from a given [SqsEvent]
+///
+/// This utilizes the `UNWRAP_SNS_ENVELOPE` environment variable to handle SNS-encoded bucket
+/// notifications
+pub fn extract_records_from(
+    events: impl IntoIterator<Item = SqsEvent>,
+) -> DeltaResult<Vec<S3EventRecord>> {
+    let mut records = vec![];
+    for event in events {
+        let pieces = match std::env::var("UNWRAP_SNS_ENVELOPE") {
+            Ok(_) => s3_from_sns(event)?,
+            Err(_) => s3_from_sqs(event)?,
+        };
+        records.extend(pieces);
+    }
+    Ok(records_with_url_decoded_keys(&records))
+}
+
+/// Convert an [oxbow_sqs::Message] into an [SqsMessage]
+///
+/// The [SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
+/// from Lambda triggers and the other directly from SQS.
+pub fn convert_from_sqs(message: oxbow_sqs::Message) -> aws_lambda_events::sqs::SqsMessage {
+    aws_lambda_events::sqs::SqsMessage {
+        message_id: message.message_id,
+        receipt_handle: message.receipt_handle,
+        body: message.body,
+        md5_of_body: message.md5_of_body,
+        md5_of_message_attributes: message.md5_of_message_attributes,
+        // Translating message_attributes structs is an exercise for later
+        //attributes: message.message_attributes.unwrap_or_default()
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

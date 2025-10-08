@@ -20,3 +20,4 @@ urlencoding = "=2"
 url = { workspace = true }
 
 oxbow = { path = "../oxbow" }
+oxbow-sqs = { path = "../oxbow-sqs" }

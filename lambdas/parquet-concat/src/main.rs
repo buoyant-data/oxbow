@@ -5,7 +5,6 @@ use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
 use lambda_runtime::tracing::{debug, error, info, trace};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use object_store;
 use parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStream, ParquetRecordBatchStreamBuilder,
 };
@@ -18,9 +17,10 @@ use oxbow_lambda_shared::*;
 use oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use tokio_stream::StreamExt;
 
-use deltalake::Path;
+use deltalake::{ObjectStore, Path};
 use std::alloc::System;
 use std::env;
+use std::iter::Iterator;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -77,7 +77,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let config = aws_config::load_from_env().await;
 
     // Input store to fetch parquet files from S3
-    let input_store: Arc<dyn object_store::ObjectStore> = Arc::new(
+    let input_store: Arc<dyn ObjectStore> = Arc::new(
         object_store::aws::AmazonS3Builder::from_env()
             .with_bucket_name(&input_bucket)
             .build()
@@ -85,7 +85,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     );
 
     // Output store to write parquet files to S3
-    let output_store: Arc<dyn object_store::ObjectStore> = Arc::new(
+    let output_store: Arc<dyn ObjectStore> = Arc::new(
         object_store::aws::AmazonS3Builder::from_env()
             .with_bucket_name(&output_bucket)
             .build()
@@ -141,9 +141,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
         // Each iteration we'll drain the records to make sure everything is _gotten_ before
         // continuing
-        let records_to_process = records.drain(..).collect::<Vec<_>>();
         process_records(
-            records_to_process,
+            records.drain(..),
             &input_store,
             &output_store,
             &output_prefix,
@@ -166,9 +165,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
 /// Process a batch of S3 event records, concatenating parquet files
 async fn process_records(
-    records: Vec<S3EventRecord>,
-    input_store: &Arc<dyn object_store::ObjectStore>,
-    output_store: &Arc<dyn object_store::ObjectStore>,
+    records: impl Iterator<Item = S3EventRecord>,
+    input_store: &Arc<dyn ObjectStore>,
+    output_store: &Arc<dyn ObjectStore>,
     output_prefix: &str,
     input_prefix: &str,
     last_writer: &mut Option<AsyncArrowWriter<ParquetObjectWriter>>,
@@ -366,20 +365,17 @@ mod tests {
             "faker_products/1701800282197_0.parquet",
             "faker_products/1701800282197_0.parquet",
         ];
-        let records = files
-            .iter()
-            .map(|file| S3EventRecord {
-                s3: S3Entity {
-                    object: S3Object {
-                        key: Some(file.to_string()),
-                        url_decoded_key: Some(file.to_string()),
-                        ..Default::default()
-                    },
+        let records = files.iter().map(|file| S3EventRecord {
+            s3: S3Entity {
+                object: S3Object {
+                    key: Some(file.to_string()),
+                    url_decoded_key: Some(file.to_string()),
                     ..Default::default()
                 },
                 ..Default::default()
-            })
-            .collect::<Vec<_>>();
+            },
+            ..Default::default()
+        });
 
         let mut last_writer: Option<AsyncArrowWriter<ParquetObjectWriter>> = None;
         let mut last_dir: Option<String> = None;
@@ -452,20 +448,17 @@ mod tests {
             "deltatbl-partitioned/c2=foo1/part-00000-786c7455-9587-454f-9a4c-de0b22b62bbd.c000.snappy.parquet",
         ];
 
-        let records = files
-            .iter()
-            .map(|file| S3EventRecord {
-                s3: S3Entity {
-                    object: S3Object {
-                        key: Some(file.to_string()),
-                        url_decoded_key: Some(file.to_string()),
-                        ..Default::default()
-                    },
+        let records = files.iter().map(|file| S3EventRecord {
+            s3: S3Entity {
+                object: S3Object {
+                    key: Some(file.to_string()),
+                    url_decoded_key: Some(file.to_string()),
                     ..Default::default()
                 },
                 ..Default::default()
-            })
-            .collect::<Vec<_>>();
+            },
+            ..Default::default()
+        });
 
         let mut last_writer: Option<AsyncArrowWriter<ParquetObjectWriter>> = None;
         let mut last_dir: Option<String> = None;

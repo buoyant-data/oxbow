@@ -60,21 +60,11 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let output_bucket = std::env::var("OUTPUT_BUCKET").expect("Failed to get `OUTPUT_BUCKET`");
     let input_prefix = std::env::var("INPUT_PREFIX").unwrap_or_default();
     debug!("Receiving event: {event:?}");
-    let region = Region::new(GLOBAL);
     let mut records = extract_records_from(vec![event.payload])?;
-
     info!("Processing {} bucket notifications", records.len());
-    let fn_start_since_epoch_ms: u128 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Failed to get a system time after unix epoch")
-        .as_millis();
-    // Millis to allow for consuming more messages
-    let more_deadline_ms = ((event.context.deadline as u128) - fn_start_since_epoch_ms) / 2;
 
     let mut last_writer: Option<AsyncArrowWriter<ParquetObjectWriter>> = None;
     let mut last_dir: Option<String> = None;
-
-    let config = aws_config::load_from_env().await;
 
     // Input store to fetch parquet files from S3
     let input_store: Arc<dyn ObjectStore> = Arc::new(
@@ -91,74 +81,24 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
             .build()
             .expect("Output object store failed to build"),
     );
-    let consumer_config = ConsumerConfig {
-        retrieval_max: 1,
-        ..Default::default()
-    };
-    info!("TimedConsumer configuration being used: {consumer_config:?}");
 
-    let mut consumer = TimedConsumer::new(
-        consumer_config,
-        &config,
-        Duration::from_millis(
-            more_deadline_ms
-                .try_into()
-                .expect("Failed to compute a 64-bit deadline"),
-        ),
-    );
-
-    if let Ok(bytes_to_consume) = std::env::var("BUFFER_MORE_MBYTES_ALLOWED") {
-        consumer.set_memory_limit(
-            region,
-            bytes_to_consume
-                .parse::<usize>()
-                .expect("BUFFER_MORE_MBYTES_ALLOWED must be parseable as a uint64")
-                * 1024
-                * 1024,
-        );
-    }
-
-    loop {
-        let next_up = consumer.next().await?;
-
-        if let Some(batch) = next_up {
-            info!(
-                "Buffered an additional {} more messages from SQS",
-                batch.len()
-            );
-            // When pulling messages separately, convert them to a Lambda SqsEvent like structure for
-            // easier reuse of deserialization codec
-            let event = SqsEvent {
-                records: batch.into_iter().map(convert_from_sqs).collect(),
-            };
-            records.extend(extract_records_from(vec![event])?);
-        }
-
-        if records.is_empty() {
-            trace!("No more records to process at the moment, see ya later!");
-            break;
-        }
-
-        // Each iteration we'll drain the records to make sure everything is _gotten_ before
-        // continuing
-        process_records(
-            records.drain(..),
-            &input_store,
-            &output_store,
-            &output_prefix,
-            &input_prefix,
-            &mut last_writer,
-            &mut last_dir,
-        )
-        .await?;
-    }
+    // Each iteration we'll drain the records to make sure everything is _gotten_ before
+    // continuing
+    process_records(
+        records.drain(..),
+        &input_store,
+        &output_store,
+        &output_prefix,
+        &input_prefix,
+        &mut last_writer,
+        &mut last_dir,
+    )
+    .await?;
 
     if let Some(writer) = last_writer {
         info!("Finalizing last writer");
         writer.close().await?;
     }
-    debug!("Flushing consumer to wrap up the execution");
-    consumer.flush().await?;
 
     Ok(())
 }
@@ -178,7 +118,11 @@ async fn process_records(
             RecordType::Parquet => {
                 debug!("Preparing to load file {file_record:?}");
                 let location: Path = file_record.s3.object.url_decoded_key.unwrap().into();
-                let object_reader = ParquetObjectReader::new(input_store.clone(), location.clone());
+                let mut object_reader =
+                    ParquetObjectReader::new(input_store.clone(), location.clone());
+                if let Some(file_size) = file_record.s3.object.size {
+                    object_reader = object_reader.with_file_size(file_size.try_into()?);
+                }
                 let mut reader = ParquetRecordBatchStreamBuilder::new(object_reader)
                     .await?
                     .with_batch_size(10_000)

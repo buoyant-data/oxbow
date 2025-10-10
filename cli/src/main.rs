@@ -4,6 +4,7 @@
 
 use gumdrop::Options;
 use tracing::log::*;
+use url::Url;
 
 /*
  * Flags is a structure for managing command linke parameters
@@ -39,7 +40,7 @@ async fn main() -> Result<(), anyhow::Error> {
     info!("Starting oxbow");
     let flags = Flags::parse_args_default_or_exit();
     debug!("Options as read: {:?}", flags);
-    let location = table_location(&flags)?;
+    let location = Url::parse(&table_location(&flags)?)?;
     info!("Using the table location of: {:?}", location);
 
     oxbow::convert(&location, None)

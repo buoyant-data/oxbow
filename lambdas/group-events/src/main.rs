@@ -153,6 +153,7 @@ mod tests {
         assert_eq!(4, event.records.len());
 
         let fifos = segmented_by_prefix(&event.records, Some(4)).expect("Failed to segment");
+        println!("fifos: {fifos:#?}");
         assert!(
             fifos.keys().len() > 2,
             "The segmented test file should have been distributed to more than just two keys"

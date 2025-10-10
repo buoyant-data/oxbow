@@ -1,6 +1,5 @@
 use chrono::prelude::*;
 use deltalake::arrow::array::RecordBatch;
-use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::arrow::error::ArrowError;
 use deltalake::arrow::json::reader::ReaderBuilder;
 use deltalake::writer::{DeltaWriter, record_batch::RecordBatchWriter};
@@ -45,18 +44,15 @@ pub async fn append_values(
     mut table: DeltaTable,
     values: impl IntoIterator<Item: AsRef<str>>,
 ) -> DeltaResult<DeltaTable> {
-    let schema = table.get_schema()?;
+    let schema = table.snapshot()?.snapshot().arrow_schema();
     debug!("Attempting to append values with schema: {schema:?}");
-    let schema = ArrowSchema::try_from(schema)?;
 
     let mut writer = RecordBatchWriter::for_table(&table)?;
     let mut written = false;
 
     for value in values {
         let cursor: Cursor<&str> = Cursor::new(value.as_ref());
-        let reader = ReaderBuilder::new(schema.clone().into())
-            .build(cursor)
-            .unwrap();
+        let reader = ReaderBuilder::new(schema.clone()).build(cursor).unwrap();
 
         for res in reader {
             match res {
@@ -131,8 +127,7 @@ mod tests {
     use deltalake::*;
 
     async fn setup_test_table() -> DeltaResult<DeltaTable> {
-        DeltaOps::try_from_uri("memory://")
-            .await?
+        DeltaOps::new_in_memory()
             .create()
             .with_table_name("test")
             .with_column("id", DataType::INTEGER, true, None)
@@ -146,8 +141,7 @@ mod tests {
         use std::fs::File;
         use std::io::BufReader;
 
-        let table = DeltaOps::try_from_uri("memory://")
-            .await?
+        let table = DeltaOps::new_in_memory()
             .create()
             .with_table_name("test")
             .with_column("current", DataType::BOOLEAN, true, None)
@@ -157,12 +151,12 @@ mod tests {
 
         let buf = File::open("../../tests/data/senators.jsonl")?;
         let reader = BufReader::new(buf);
-        let schema = ArrowSchema::try_from(table.get_schema()?)?;
+        let schema = table.snapshot()?.snapshot().arrow_schema();
 
-        let json = deltalake::arrow::json::ReaderBuilder::new(schema.into()).build(reader)?;
+        let json = deltalake::arrow::json::ReaderBuilder::new(schema).build(reader)?;
 
         let table = append_batches(table, json).await?;
-        assert_eq!(table.version(), 1);
+        assert_eq!(table.version(), Some(1));
         Ok(())
     }
 
@@ -178,7 +172,7 @@ mod tests {
             .await
             .expect("Failed to do nothing");
 
-        assert_eq!(table.version(), 1);
+        assert_eq!(table.version(), Some(1));
         Ok(())
     }
 
@@ -191,9 +185,8 @@ mod tests {
         "#;
 
         let cursor = Cursor::new(jsonl);
-        let schema = table.get_schema()?;
-        let schema = ArrowSchema::try_from(schema)?;
-        let mut reader = ReaderBuilder::new(schema.into()).build(cursor).unwrap();
+        let schema = table.snapshot()?.snapshot().arrow_schema();
+        let mut reader = ReaderBuilder::new(schema).build(cursor).unwrap();
 
         while let Some(Ok(batch)) = reader.next() {
             let batch = augment_with_ds(batch)?;
@@ -215,12 +208,13 @@ mod tests {
             .await
             .expect("Failed to do nothing");
 
-        assert_eq!(table.version(), 1);
+        assert_eq!(table.version(), Some(1));
         Ok(())
     }
 
     #[tokio::test]
     async fn test_append_values_checkpoint() -> DeltaResult<()> {
+        use deltalake::table::config::TablePropertiesExt;
         let mut table = setup_test_table().await?;
 
         for _ in 0..101 {
@@ -235,7 +229,7 @@ mod tests {
 
         if let Some(state) = table.state.as_ref() {
             // The default is expected to be 100
-            assert_eq!(100, state.table_config().checkpoint_interval());
+            assert_eq!(100, state.table_config().checkpoint_interval().get());
         }
 
         use deltalake::Path;
@@ -245,7 +239,7 @@ mod tests {
             .await?;
 
         assert_ne!(0, checkpoint.size);
-        assert_eq!(table.version(), 101);
+        assert_eq!(table.version(), Some(101));
         Ok(())
     }
 }

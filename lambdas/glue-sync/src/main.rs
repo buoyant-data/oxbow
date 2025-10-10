@@ -9,6 +9,7 @@ use deltalake::kernel::{DataType, PrimitiveType};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use regex::Regex;
 use tracing::log::*;
+use url::Url;
 
 use oxbow_lambda_shared::*;
 use std::collections::HashMap;
@@ -84,8 +85,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         {
             if let Some(table_path) = key_is_delta_table(&key) {
                 debug!("loading table from {table_path}");
-                let uri = format!("s3://{bucket}/{table_path}");
-                let delta_table = deltalake::open_table(&uri).await?;
+                let uri = Url::parse(&format!("s3://{bucket}/{table_path}"))?;
+                let delta_table = deltalake::open_table(uri).await?;
 
                 if let Some(descriptor) = storage_descriptor_from(&delta_table, &glue_table) {
                     let parameters = match glue_table.parameters {
@@ -94,7 +95,10 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                             let mut updated = original.clone();
                             updated.insert(
                                 "delta.lastUpdateVersion".into(),
-                                delta_table.version().to_string(),
+                                delta_table
+                                    .version()
+                                    .expect("Failed to load a table version")
+                                    .to_string(),
                             );
                             Some(updated)
                         }
@@ -258,8 +262,9 @@ fn to_glue_type(data_type: &DataType) -> String {
 /// Generate the [Column] for Glue [aws_sdk_glue::types::StorageDescriptor] based on the provided
 /// [DeltaTable]
 fn glue_columns_for(table: &DeltaTable) -> Vec<Column> {
-    if let Ok(schema) = table.get_schema() {
-        return schema
+    if let Ok(snapshot) = table.snapshot() {
+        return snapshot
+            .schema()
             .fields()
             .map(|field| {
                 Column::builder()
@@ -315,8 +320,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_glue_columns() {
-        let table = "../../tests/data/hive/deltatbl-non-partitioned";
-        let table = deltalake::open_table(&table)
+        let table =
+            std::fs::canonicalize("../../tests/data/hive/deltatbl-non-partitioned").unwrap();
+        let table = deltalake::open_table(Url::from_file_path(table).unwrap())
             .await
             .expect("Failed to open table");
 

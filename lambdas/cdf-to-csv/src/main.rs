@@ -9,7 +9,6 @@ use deltalake::delta_datafusion::DeltaCdfTableProvider;
 use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use object_store::ObjectStore;
-use object_store::PutPayload;
 use object_store::path::Path;
 use object_store::prefix::PrefixStore;
 use oxbow_lambda_shared::*;
@@ -68,9 +67,9 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
                     .expect("Failed to create an output object_store"),
             );
 
-            let table = deltalake::open_table(trigger.location().as_str()).await?;
+            let table = deltalake::open_table(trigger.location().clone()).await?;
             info!(
-                "Loaded a table for {} at version {}",
+                "Loaded a table for {} at version {:?}",
                 trigger.location().as_str(),
                 table.version()
             );
@@ -182,7 +181,7 @@ struct Completion {
 mod tests {
     use super::*;
     use futures::StreamExt;
-    use object_store::{GetResultPayload, ObjectStore};
+    use object_store::ObjectStore;
 
     use deltalake::datafusion::{
         common::assert_batches_sorted_eq, dataframe::DataFrameWriteOptions,
@@ -190,7 +189,12 @@ mod tests {
     use deltalake::operations::load_cdf::CdfLoadBuilder;
 
     async fn cdf_test_setup() -> DeltaResult<(SessionContext, CdfLoadBuilder)> {
-        let table = deltalake::open_table("../../tests/data/hive/checkpoint-cdf-table/").await?;
+        let canonical = std::fs::canonicalize("../../tests/data/hive/checkpoint-cdf-table")
+            .expect("Failed to canonicalize");
+        let table = deltalake::open_table(
+            Url::from_file_path(canonical).expect("Failed to find the Url for the CDF table"),
+        )
+        .await?;
         let cdf = DeltaOps::from(table).load_cdf().with_starting_version(3);
         let ctx = SessionContext::new();
         Ok((ctx, cdf))

@@ -281,7 +281,7 @@ mod tests {
 
         table.load().await?;
 
-        assert_eq!(table.version(), version);
+        assert_eq!(table.version(), Some(version));
 
         let ctx = SessionContext::new();
         ctx.register_table("test", Arc::new(table))?;

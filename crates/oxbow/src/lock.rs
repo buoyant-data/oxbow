@@ -4,6 +4,7 @@
 ///
 use dynamodb_lock::Region;
 use tracing::log::*;
+use url::Url;
 
 use std::collections::HashMap;
 
@@ -11,7 +12,11 @@ use std::collections::HashMap;
 ///Wrapper aroudn [deltalake::open_table] which will open the table with the appropriate storage
 ///options needed for locking
 pub async fn open_table(table_uri: &str) -> deltalake::DeltaResult<deltalake::DeltaTable> {
-    deltalake::open_table_with_storage_options(&table_uri, storage_options(table_uri)).await
+    deltalake::open_table_with_storage_options(
+        Url::parse(table_uri).expect("Fail"),
+        storage_options(table_uri),
+    )
+    .await
 }
 
 /// Default storage options for using with `deltalake` calls

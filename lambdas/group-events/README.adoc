@@ -30,5 +30,9 @@ the SQS FIFO queue where concurrent function invocations will have a far lower l
 | _null_
 | Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
 
+| `GROUP_DISTRIBUTION`
+| _null_
+| Optional integer value to subdivide the group further than just the hash of the previx and bucket
+
 
 |===

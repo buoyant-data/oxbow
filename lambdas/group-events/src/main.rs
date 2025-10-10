@@ -16,6 +16,11 @@ use oxbow_lambda_shared::*;
 async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let config = aws_config::load_from_env().await;
     let client = aws_sdk_sqs::Client::new(&config);
+    let mut distributor: Option<u64> = None;
+
+    if let Ok(distribute_by) = std::env::var("GROUP_DISTRIBUTION") {
+        distributor = Some(distribute_by.parse()?);
+    }
 
     debug!("Receiving event: {:?}", event);
     let records = match std::env::var("UNWRAP_SNS_ENVELOPE") {
@@ -23,7 +28,7 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
         Err(_) => s3_from_sqs(event.payload)?,
     };
     debug!("Deserialized records into the following for segment: {records:?}");
-    let segmented = segmented_by_prefix(&records)?;
+    let segmented = segmented_by_prefix(&records, distributor)?;
     debug!("Segmented into the following keys: {:?}", segmented.keys());
 
     let queue_url = std::env::var("QUEUE_URL").expect("Failed to get the FIFO output queue");
@@ -94,13 +99,18 @@ async fn main() -> Result<(), Error> {
  */
 fn segmented_by_prefix(
     records: &[S3EventRecord],
+    distributor: Option<u64>,
 ) -> Result<HashMap<String, Vec<S3EventRecord>>, Error> {
     let mut segments = HashMap::new();
 
     for record in records_with_url_decoded_keys(records) {
         if let Some(bucket) = &record.s3.bucket.name {
             let log_path = infer_log_path_from(record.s3.object.url_decoded_key.as_ref().unwrap());
-            let key = format!("s3://{}/{}", bucket, log_path);
+            let mut key = format!("s3://{}/{}", bucket, log_path);
+
+            if let Some(distributor) = distributor {
+                key = format!("{key}-{}", rand::random_range(0..distributor));
+            }
 
             if !segments.contains_key(&key) {
                 segments.insert(key.clone(), vec![]);
@@ -127,11 +137,25 @@ mod tests {
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
         assert_eq!(4, event.records.len());
 
-        let fifos = segmented_by_prefix(&event.records).expect("Failed to segment");
+        let fifos = segmented_by_prefix(&event.records, None).expect("Failed to segment");
         assert_eq!(
             2,
             fifos.keys().len(),
             "The segmented test file should have only two prefixes"
+        );
+    }
+
+    #[test]
+    fn test_segment_events_with_distribution() {
+        let buf = std::fs::read_to_string("../../tests/data/s3-event-multiple.json")
+            .expect("Failed to read file");
+        let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
+        assert_eq!(4, event.records.len());
+
+        let fifos = segmented_by_prefix(&event.records, Some(4)).expect("Failed to segment");
+        assert!(
+            fifos.keys().len() > 2,
+            "The segmented test file should have been distributed to more than just two keys"
         );
     }
 }

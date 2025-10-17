@@ -41,6 +41,10 @@ toc::[]
 | `20`
 | Maximum number of retries for interactions with S3
 
+| `INIT_BACKOFF_MS`
+| `500`
+| Number of milliseconds to start at for backoff retries
+
 | `RUST_LOG`
 | `error`
 | Log level (default: `error`). Can be scoped to specific modules, e.g. `oxbow=debug`

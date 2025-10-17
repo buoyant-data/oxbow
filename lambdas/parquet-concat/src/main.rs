@@ -66,8 +66,12 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let mut last_writer: Option<AsyncArrowWriter<ParquetObjectWriter>> = None;
     let mut last_dir: Option<String> = None;
 
-    let max_retries: usize = std::env::var("MAX_RETRIES").unwrap_or("20".to_string()).parse()?;
-    let init_backoff_ms: u64 = std::env::var("INIT_BACKOFF_MS").unwrap_or("500".to_string()).parse()?;
+    let max_retries: usize = std::env::var("MAX_RETRIES")
+        .unwrap_or("20".to_string())
+        .parse()?;
+    let init_backoff_ms: u64 = std::env::var("INIT_BACKOFF_MS")
+        .unwrap_or("500".to_string())
+        .parse()?;
 
     let retry = RetryConfig {
         backoff: BackoffConfig {

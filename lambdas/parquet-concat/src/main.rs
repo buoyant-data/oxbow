@@ -3,18 +3,18 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
-use lambda_runtime::tracing::{debug, error, info, trace};
+use lambda_runtime::tracing::{debug, error, info};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
+use object_store::{BackoffConfig, RetryConfig};
 use parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStream, ParquetRecordBatchStreamBuilder,
 };
 use parquet::arrow::async_writer::{AsyncArrowWriter, ParquetObjectWriter};
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
-use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
+use stats_alloc::{INSTRUMENTED_SYSTEM, StatsAlloc};
 
 use oxbow_lambda_shared::*;
-use oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use tokio_stream::StreamExt;
 
 use deltalake::{ObjectStore, Path};
@@ -22,7 +22,7 @@ use std::alloc::System;
 use std::env;
 use std::iter::Iterator;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use uuid::Uuid;
 
 /// The setting of the global allocator here with stats alloc is intended to allow the
@@ -66,10 +66,23 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let mut last_writer: Option<AsyncArrowWriter<ParquetObjectWriter>> = None;
     let mut last_dir: Option<String> = None;
 
+    let max_retries: usize = std::env::var("MAX_RETRIES").unwrap_or("20".to_string()).parse()?;
+    let init_backoff_ms: u64 = std::env::var("INIT_BACKOFF_MS").unwrap_or("500".to_string()).parse()?;
+
+    let retry = RetryConfig {
+        backoff: BackoffConfig {
+            init_backoff: Duration::from_millis(init_backoff_ms),
+            ..Default::default()
+        },
+        max_retries,
+        ..Default::default()
+    };
+
     // Input store to fetch parquet files from S3
     let input_store: Arc<dyn ObjectStore> = Arc::new(
         object_store::aws::AmazonS3Builder::from_env()
             .with_bucket_name(&input_bucket)
+            .with_retry(retry.clone())
             .build()
             .expect("Input object store failed to build"),
     );
@@ -78,6 +91,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let output_store: Arc<dyn ObjectStore> = Arc::new(
         object_store::aws::AmazonS3Builder::from_env()
             .with_bucket_name(&output_bucket)
+            .with_retry(retry)
             .build()
             .expect("Output object store failed to build"),
     );

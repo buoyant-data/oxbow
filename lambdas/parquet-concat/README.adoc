@@ -37,13 +37,9 @@ toc::[]
 |
 | S3 prefix/path where consolidated files will be stored
 
-| `BUFFER_MORE_QUEUE_URL`
-|
-| SQS queue URL for buffering additional messages beyond the initial Lambda trigger
-
-| `BUFFER_MORE_MBYTES_ALLOWED`
-|
-| Memory limit in MB for processing additional messages (optional)
+| `MAX_RETRIES`
+| `20`
+| Maximum number of retries for interactions with S3
 
 | `RUST_LOG`
 | `error`

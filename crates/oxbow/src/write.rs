@@ -17,7 +17,8 @@ pub async fn append_batches(
     mut table: DeltaTable,
     batches: impl IntoIterator<Item = Result<RecordBatch, ArrowError>>,
 ) -> DeltaResult<DeltaTable> {
-    let mut writer = RecordBatchWriter::for_table(&table)?;
+    let mut writer = RecordBatchWriter::for_table(&table)?
+        .with_commit_properties(super::default_commit_properties());
     let mut written = false;
 
     trace!("Iterating through batches to write");
@@ -47,7 +48,8 @@ pub async fn append_values(
     let schema = table.snapshot()?.snapshot().arrow_schema();
     debug!("Attempting to append values with schema: {schema:?}");
 
-    let mut writer = RecordBatchWriter::for_table(&table)?;
+    let mut writer = RecordBatchWriter::for_table(&table)?
+        .with_commit_properties(super::default_commit_properties());
     let mut written = false;
 
     for value in values {

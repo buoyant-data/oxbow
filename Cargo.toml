@@ -20,7 +20,7 @@ anyhow = "=1"
 chrono = "0.4"
 aws_lambda_events = { version = "0.15", default-features = false, features = ["sns", "sqs", "s3"] }
 # The datafusion feature is required to support invariants which may be in error, but is required as of currently released 0.18.2
-deltalake = { version = "0.29.0", features = ["s3", "json", "datafusion"] }
+deltalake = { version = "0.29.2", features = ["s3", "json", "datafusion"] }
 #deltalake = { git = "https://github.com/delta-io/delta-rs", branch = "main", features = ["s3", "json", "datafusion"]}
 #deltalake = { path = "../../delta-io/delta-rs/crates/deltalake", features = ["s3", "json", "datafusion"]}
 futures = { version = "0.3" }

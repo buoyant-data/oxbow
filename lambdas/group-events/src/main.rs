@@ -152,7 +152,7 @@ mod tests {
         let event: S3Event = serde_json::from_str(&buf).expect("Failed to parse");
         assert_eq!(4, event.records.len());
 
-        let fifos = segmented_by_prefix(&event.records, Some(4)).expect("Failed to segment");
+        let fifos = segmented_by_prefix(&event.records, Some(8)).expect("Failed to segment");
         println!("fifos: {fifos:#?}");
         assert!(
             fifos.keys().len() > 2,

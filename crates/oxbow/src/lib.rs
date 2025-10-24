@@ -4,6 +4,7 @@
 use deltalake::arrow::datatypes::Schema as ArrowSchema;
 use deltalake::kernel::engine::arrow_conversion::TryFromArrow;
 use deltalake::kernel::schema::{Schema, StructField};
+use deltalake::kernel::transaction::{CommitBuilder, CommitProperties};
 use deltalake::logstore::{LogStoreRef, ObjectStoreRef, StorageConfig, logstore_for};
 use deltalake::operations::create::CreateBuilder;
 use deltalake::parquet::arrow::async_reader::{
@@ -207,18 +208,21 @@ pub async fn create_table_with(
         .await
 }
 
-/// Commit the given [Action]s to the [DeltaTable]
-pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
-    use deltalake::kernel::transaction::{CommitBuilder, CommitProperties};
-    if actions.is_empty() {
-        return table.version().ok_or(DeltaTableError::NotInitialized);
-    }
-    let commit = CommitProperties::default()
+/// Return the common default [CommitProperties] to be used by issuing commits in oxbow
+pub(crate) fn default_commit_properties() -> CommitProperties {
+    CommitProperties::default()
         // Turn off cleanup of expired logs. After each commit, versions are
         // scanned (ListObject on s3) to clean up expired entries. This creates
         // significant overhead when there are many versions on each commit.
-        .with_cleanup_expired_logs(Some(false));
-    let pre_commit = CommitBuilder::from(commit)
+        .with_cleanup_expired_logs(Some(false))
+}
+
+/// Commit the given [Action]s to the [DeltaTable]
+pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
+    if actions.is_empty() {
+        return table.version().ok_or(DeltaTableError::NotInitialized);
+    }
+    let pre_commit = CommitBuilder::from(default_commit_properties())
         .with_actions(actions.to_vec())
         .build(
             Some(table.snapshot()?),
@@ -1226,7 +1230,6 @@ mod tests {
         let table_url = Url::from_file_path(&table_path).expect("Failed to parse local path");
         let store =
             logstore_for(table_url, StorageConfig::default()).expect("Failed to get object store");
-
         let files = discover_parquet_files(store.object_store(None).clone())
             .await
             .expect("Failed to discover parquet files");

@@ -1,3 +1,4 @@
+use deltalake::DeltaTableBuilder;
 ///
 /// THe lock module contains some simple helpers for handling table locks in DynamoDB. This is
 /// something required of deltalake 0.16.x and earlier.
@@ -12,11 +13,12 @@ use std::collections::HashMap;
 ///Wrapper aroudn [deltalake::open_table] which will open the table with the appropriate storage
 ///options needed for locking
 pub async fn open_table(table_uri: &str) -> deltalake::DeltaResult<deltalake::DeltaTable> {
-    deltalake::open_table_with_storage_options(
-        Url::parse(table_uri).expect("Fail"),
-        storage_options(table_uri),
-    )
-    .await
+    let table_url = Url::parse(table_uri).expect("Fatal error trying to parse a table URL");
+    DeltaTableBuilder::from_url(table_url)?
+        .without_files()
+        .with_storage_options(storage_options(table_uri))
+        .load()
+        .await
 }
 
 /// Default storage options for using with `deltalake` calls
@@ -82,4 +84,19 @@ pub async fn release(
         return false;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use deltalake::DeltaResult;
+
+    #[tokio::test]
+    async fn test_open_table() -> DeltaResult<()> {
+        let _table = open_table("memory://")
+            .await
+            .expect_err("Can't possibly load a table that doesn't exist!");
+        Ok(())
+    }
 }

@@ -85,7 +85,7 @@ pub async fn convert(
         Err(e) => {
             info!("No Delta table at {}: {:?}", location, e);
             let store = logstore_for(
-                &location,
+                location,
                 StorageConfig::parse_options(storage_options.unwrap_or_default())?,
             )?;
             let files = discover_parquet_files(store.object_store(None).clone()).await?;

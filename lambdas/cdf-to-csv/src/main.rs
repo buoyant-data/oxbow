@@ -39,6 +39,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
 
     let triggers = triggers_from(event.payload)?;
     debug!("Triggered by: {triggers:?}");
+    let df_config = SessionConfig::from_env()?;
 
     for trigger in triggers {
         let mut should_process = false;
@@ -59,7 +60,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
         {
             // Creating a new [SessionContext] for every trigger to make sure the namespace inside
             // the context is unique to a triggered table
-            let ctx = SessionContext::new();
+            let ctx = SessionContext::new_with_config(df_config.clone());
             let store: Arc<dyn ObjectStore> = Arc::new(
                 object_store::aws::AmazonS3Builder::from_env()
                     .with_url(&destination)

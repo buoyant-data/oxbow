@@ -286,7 +286,10 @@ mod tests {
         let ctx = SessionContext::new();
         ctx.register_table("test", table.table_provider().await?)?;
         let count = ctx.sql("SELECT * FROM test").await?.count().await?;
-        assert_eq!(count, 1100);
+        assert_eq!(
+            count, 1100,
+            "The expected number of rows does not match what was written!"
+        );
         Ok(())
     }
 

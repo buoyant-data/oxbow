@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(table.version(), Some(version));
 
         let ctx = SessionContext::new();
-        ctx.register_table("test", Arc::new(table))?;
+        ctx.register_table("test", table.table_provider().await?)?;
         let count = ctx.sql("SELECT * FROM test").await?.count().await?;
         assert_eq!(count, 1100);
         Ok(())

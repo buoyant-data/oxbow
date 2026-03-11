@@ -292,6 +292,11 @@ mod tests {
                 .collect()
                 .await?
         );
+        ctx.sql("SELECT * FROM test")
+            .await?
+            .explain(true, false)?
+            .show()
+            .await?;
         let count = ctx.sql("SELECT * FROM test").await?.count().await?;
         assert_eq!(
             count, 1100,

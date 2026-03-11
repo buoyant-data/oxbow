@@ -239,7 +239,7 @@ mod tests {
     ///
     /// This test is to make sure the reader code will properly deserialize a file with more than
     /// 1024 rows
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_read_a_wee_bit_more_than_1024() -> anyhow::Result<()> {
         let buf = tokio::fs::File::open("../../tests/data/bigger-than-a-batch.jsonl").await?;
         let reader = tokio::io::BufReader::new(buf);
@@ -285,6 +285,13 @@ mod tests {
 
         let ctx = SessionContext::new();
         ctx.register_table("test", table.table_provider().await?)?;
+        println!(
+            "BAHH: {:?}",
+            ctx.sql("SELECT COUNT(*) FROM test")
+                .await?
+                .collect()
+                .await?
+        );
         let count = ctx.sql("SELECT * FROM test").await?.count().await?;
         assert_eq!(
             count, 1100,

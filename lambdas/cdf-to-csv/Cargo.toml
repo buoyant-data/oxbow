@@ -24,3 +24,4 @@ oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 [dev-dependencies]
 futures = "*"
+tempfile = "3.27.0"

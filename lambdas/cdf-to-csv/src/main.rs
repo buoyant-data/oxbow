@@ -135,7 +135,7 @@ async fn retrieve_inserts(ctx: &SessionContext) -> DeltaResult<DataFrame> {
     let df = ctx
         .sql("SELECT * FROM cdf WHERE _change_type IN ('insert', 'update_postimage')")
         .await?;
-    Ok(df.drop_columns(&[
+    Ok(escape_dataframe(df)?.drop_columns(&[
         "_change_type",
         "_commit_version",
         "_commit_timestamp",
@@ -178,8 +178,29 @@ struct Completion {
     deletes: usize,
 }
 
+/// Escape the string columns for newlines in the input [DataFrame] to avoid any issues with CSV
+/// serialization
+fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
+    use deltalake::arrow::datatypes::DataType;
+
+    let mut df = input.clone();
+    let schema = input.schema();
+    for field in schema.fields() {
+        if field.data_type() == &DataType::Utf8 || field.data_type() == &DataType::LargeUtf8 {
+            df = df.with_column(
+                field.name(),
+                replace(col(field.name()), lit("\n"), lit("\\n")),
+            )?
+        }
+    }
+    Ok(df)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+
     use super::*;
     use futures::StreamExt;
     use object_store::ObjectStore;
@@ -310,6 +331,46 @@ mod tests {
 
         assert!(delete_found, "No delete was found to be written");
         assert!(insert_found, "No insert was found to be written");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_writing_with_newlines() -> DeltaResult<()> {
+        use deltalake::datafusion::config::CsvOptions;
+
+        let ctx = SessionContext::new();
+        let temp = tempfile::tempdir()?;
+        let tempfile = temp.path().join("some.csv");
+        let tempfile = tempfile.as_os_str().to_str().unwrap();
+
+        let mut df = ctx
+            .read_json(
+                "./tests/data/row.json",
+                NdJsonReadOptions::default().schema_infer_max_records(1),
+            )
+            .await?;
+        let written = df.clone();
+        let written_schema = written.schema();
+        df = escape_dataframe(df)?;
+
+        df.write_csv(
+            tempfile,
+            DataFrameWriteOptions::default(),
+            Some(CsvOptions::default()),
+        )
+        .await?;
+
+        let fd = File::open(tempfile)?;
+        let reader = BufReader::new(fd);
+        let lines: Vec<_> = reader.lines().collect();
+        assert_eq!(
+            3,
+            lines.len(),
+            "Should have only written three lines for the sample input data"
+        );
+
+        let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
+        assert_eq!(written_schema, df.schema());
         Ok(())
     }
 }

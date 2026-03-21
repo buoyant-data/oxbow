@@ -62,6 +62,18 @@ s3://csvs/
 |
 | Prefix for output CSV files with deleted rows (requires primary key set)
 
+| `CSV_NULL_CHARACTER`
+|
+| Character to use as the null character in CSV output
+
+| `CSV_TIMESTAMP_FORMAT`
+| `%Y-%m-%dT%H:%M:%S%.f`
+| Format string for `timestamp` fields
+
+| `CSV_TIMESTAMP_TZ_FORMAT`
+|
+| Timestamp format for timestamp with timezone arrays. When empty ISO 8601 format is used.
+
 | `RUST_LOG`
 | `error`
 | Set the log level, e.g. `info`, `warn`, `error`. Can be scoped to specific modules, i.e. `oxbow=debug`

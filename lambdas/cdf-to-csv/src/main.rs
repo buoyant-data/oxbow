@@ -3,7 +3,9 @@
 //! produce CSV files to ingest into Aurora for Change Data Feeds
 
 use aws_lambda_events::event::sqs::SqsEvent;
+use deltalake::datafusion::config::CsvOptions;
 use deltalake::datafusion::dataframe::DataFrameWriteOptions;
+use deltalake::datafusion::datasource::physical_plan::CsvOpener;
 use deltalake::datafusion::prelude::*;
 use deltalake::delta_datafusion::DeltaCdfTableProvider;
 use deltalake::{DeltaOps, DeltaResult};
@@ -105,10 +107,18 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             // write_csv will return a Vec,RecordBatch> which we can use for some rudimentary
             // statistics
             let inserts = inserts
-                .write_csv("cdfo://inserts", DataFrameWriteOptions::default(), None)
+                .write_csv(
+                    "cdfo://inserts",
+                    DataFrameWriteOptions::default(),
+                    Some(csv_options()),
+                )
                 .await?;
             let deletes = deletes
-                .write_csv("cdfo://deletes", DataFrameWriteOptions::default(), None)
+                .write_csv(
+                    "cdfo://deletes",
+                    DataFrameWriteOptions::default(),
+                    Some(csv_options()),
+                )
                 .await?;
 
             let completion = Completion {
@@ -194,6 +204,16 @@ fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
         }
     }
     Ok(df)
+}
+
+/// Return the computed [CsvOptions] for writing output files
+fn csv_options() -> CsvOptions {
+    CsvOptions {
+        null_value: std::env::var("CSV_NULL_CHARACTER").ok(),
+        timestamp_format: std::env::var("CSV_TIMESTAMP_FORMAT").ok(),
+        timestamp_tz_format: std::env::var("CSV_TIMESTAMP_TZ_FORMAT").ok(),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]
@@ -301,7 +321,7 @@ mod tests {
         ctx.register_object_store(&Url::parse("cdfo://deletes").unwrap(), delete_store.clone());
 
         let mut stream = store.list(None);
-        while let Some(Ok(_entry)) = stream.next().await {
+        if let Some(Ok(_entry)) = stream.next().await {
             unreachable!("The InMemory object store should be empty before the test begins");
         }
 
@@ -310,10 +330,18 @@ mod tests {
         let change_data = retrieve_inserts(&ctx).await?;
         let deletes = retrieve_deletes(&ctx).await?;
         change_data
-            .write_csv("cdfo://inserts", DataFrameWriteOptions::default(), None)
+            .write_csv(
+                "cdfo://inserts",
+                DataFrameWriteOptions::default(),
+                Some(csv_options()),
+            )
             .await?;
         deletes
-            .write_csv("cdfo://deletes", DataFrameWriteOptions::default(), None)
+            .write_csv(
+                "cdfo://deletes",
+                DataFrameWriteOptions::default(),
+                Some(csv_options()),
+            )
             .await?;
 
         let mut stream = store.list(None);
@@ -356,7 +384,7 @@ mod tests {
         df.write_csv(
             tempfile,
             DataFrameWriteOptions::default(),
-            Some(CsvOptions::default()),
+            Some(csv_options()),
         )
         .await?;
 

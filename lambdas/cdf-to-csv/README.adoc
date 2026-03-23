@@ -58,6 +58,10 @@ s3://csvs/
 |
 | Optional primary key for delete CSV files
 
+| `CSV_BOOL_AS_INT`
+|
+| When this environment variable exists, any boolean `true` will be written as `1` in the CSV output. False and null values are both encoded as `0`.
+
 | `CSV_DELETE_PREFIX`
 |
 | Prefix for output CSV files with deleted rows (requires primary key set)

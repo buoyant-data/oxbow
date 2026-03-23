@@ -5,8 +5,8 @@
 use aws_lambda_events::event::sqs::SqsEvent;
 use deltalake::datafusion::config::CsvOptions;
 use deltalake::datafusion::dataframe::DataFrameWriteOptions;
-use deltalake::datafusion::datasource::physical_plan::CsvOpener;
 use deltalake::datafusion::prelude::*;
+use deltalake::datafusion::scalar::ScalarValue;
 use deltalake::delta_datafusion::DeltaCdfTableProvider;
 use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
@@ -196,11 +196,16 @@ fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
     let mut df = input.clone();
     let schema = input.schema();
     for field in schema.fields() {
+        if field.data_type() == &DataType::Boolean && std::env::var("CSV_BOOL_AS_INT").is_ok() {
+            df = df
+                .fill_null(ScalarValue::from(0), [field.name().clone()].to_vec())?
+                .with_column(field.name(), cast(col(field.name()), DataType::Int32))?;
+        }
         if field.data_type() == &DataType::Utf8 || field.data_type() == &DataType::LargeUtf8 {
             df = df.with_column(
                 field.name(),
                 replace(col(field.name()), lit("\n"), lit("\\n")),
-            )?
+            )?;
         }
     }
     Ok(df)
@@ -363,9 +368,47 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_writing_with_newlines() -> DeltaResult<()> {
-        use deltalake::datafusion::config::CsvOptions;
+    async fn test_writing_bool_as_int() -> DeltaResult<()> {
+        unsafe {
+            std::env::set_var("CSV_BOOL_AS_INT", "1");
+        }
+        let ctx = SessionContext::new();
+        let temp = tempfile::tempdir()?;
+        let tempfile = temp.path().join("some.csv");
+        let tempfile = tempfile.as_os_str().to_str().unwrap();
 
+        let mut df = ctx
+            .read_json(
+                "./tests/data/row.json",
+                NdJsonReadOptions::default().schema_infer_max_records(1),
+            )
+            .await?;
+        let written = df.clone();
+        let written_schema = written.schema();
+        df = escape_dataframe(df)?;
+
+        df.write_csv(
+            tempfile,
+            DataFrameWriteOptions::default(),
+            Some(csv_options()),
+        )
+        .await?;
+
+        let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
+        let expected = [
+            "+-----+", "| boo |", "+-----+", "| 0   |", "| 0   |", "| 1   |", "+-----+",
+        ];
+
+        assert_batches_sorted_eq!(expected, &df.select_columns(&["boo"])?.collect().await?);
+
+        unsafe {
+            std::env::remove_var("CSV_BOOL_AS_INT");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_writing_with_newlines() -> DeltaResult<()> {
         let ctx = SessionContext::new();
         let temp = tempfile::tempdir()?;
         let tempfile = temp.path().join("some.csv");
@@ -392,13 +435,14 @@ mod tests {
         let reader = BufReader::new(fd);
         let lines: Vec<_> = reader.lines().collect();
         assert_eq!(
-            3,
+            4,
             lines.len(),
-            "Should have only written three lines for the sample input data"
+            "Should have only written four lines for the sample input data"
         );
 
         let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
         assert_eq!(written_schema, df.schema());
+
         Ok(())
     }
 }

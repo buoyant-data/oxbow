@@ -3,6 +3,7 @@
 //! produce CSV files to ingest into Aurora for Change Data Feeds
 
 use aws_lambda_events::event::sqs::SqsEvent;
+use deltalake::datafusion::common::parsers::CsvQuoteStyle;
 use deltalake::datafusion::config::CsvOptions;
 use deltalake::datafusion::dataframe::DataFrameWriteOptions;
 use deltalake::datafusion::prelude::*;
@@ -215,6 +216,7 @@ fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
 fn csv_options() -> CsvOptions {
     CsvOptions {
         null_value: std::env::var("CSV_NULL_CHARACTER").ok(),
+        quote_style: CsvQuoteStyle::Always,
         timestamp_format: std::env::var("CSV_TIMESTAMP_FORMAT").ok(),
         timestamp_tz_format: std::env::var("CSV_TIMESTAMP_TZ_FORMAT").ok(),
         ..Default::default()
@@ -384,7 +386,6 @@ mod tests {
             )
             .await?;
         let written = df.clone();
-        let written_schema = written.schema();
         df = escape_dataframe(df)?;
 
         df.write_csv(

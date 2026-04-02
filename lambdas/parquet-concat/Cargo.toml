@@ -20,7 +20,7 @@ tokio-stream = { version = "0.1.17" }
 aws-config = "1.5.10"
 aws-sdk-s3 = "1.60.0"
 object_store = { version = "0.12.1", features = ["cloud"]}
-parquet = { version = "55.0.0", features = ["async", "object_store"] }
+parquet = { version = "57", features = ["async", "object_store"] }
 stats_alloc = "0.1"
 tracing-subscriber = { workspace = true }
 uuid = { version = "1.6.1", features = ["v4"] }

@@ -60,7 +60,11 @@ s3://csvs/
 
 | `CSV_BOOL_AS_INT`
 |
-| When this environment variable exists, any boolean `true` will be written as `1` in the CSV output. False and null values are both encoded as `0`.
+| When this environment variable exists, any boolean `true` will be written as `1` in the CSV output. False is encoded as `0`.
+
+| `CSV_BOOL_NULL_AS_INT`
+|
+| When this environment variable exists, any nullable boolean value will be written as `0` instead of null in the result set.
 
 | `CSV_DELETE_PREFIX`
 |

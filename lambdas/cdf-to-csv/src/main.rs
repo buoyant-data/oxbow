@@ -198,9 +198,10 @@ fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
     let schema = input.schema();
     for field in schema.fields() {
         if field.data_type() == &DataType::Boolean && std::env::var("CSV_BOOL_AS_INT").is_ok() {
-            df = df
-                .fill_null(ScalarValue::from(0), [field.name().clone()].to_vec())?
-                .with_column(field.name(), cast(col(field.name()), DataType::Int32))?;
+            if std::env::var("CSV_BOOL_NULL_AS_INT").is_ok() {
+                df = df.fill_null(ScalarValue::from(0), [field.name().clone()].to_vec())?;
+            }
+            df = df.with_column(field.name(), cast(col(field.name()), DataType::Int32))?;
         }
         if field.data_type() == &DataType::Utf8 || field.data_type() == &DataType::LargeUtf8 {
             df = df.with_column(
@@ -397,6 +398,46 @@ mod tests {
 
         let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
         let expected = [
+            "+-----+", "| boo |", "+-----+", "|     |", "| 0   |", "| 1   |", "+-----+",
+        ];
+
+        assert_batches_sorted_eq!(expected, &df.select_columns(&["boo"])?.collect().await?);
+
+        unsafe {
+            std::env::remove_var("CSV_BOOL_AS_INT");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_writing_bool_as_int_with_null() -> DeltaResult<()> {
+        unsafe {
+            std::env::set_var("CSV_BOOL_AS_INT", "1");
+            std::env::set_var("CSV_BOOL_NULL_AS_INT", "1");
+        }
+        let ctx = SessionContext::new();
+        let temp = tempfile::tempdir()?;
+        let tempfile = temp.path().join("some.csv");
+        let tempfile = tempfile.as_os_str().to_str().unwrap();
+
+        let mut df = ctx
+            .read_json(
+                "./tests/data/row.json",
+                NdJsonReadOptions::default().schema_infer_max_records(1),
+            )
+            .await?;
+        let written = df.clone();
+        df = escape_dataframe(df)?;
+
+        df.write_csv(
+            tempfile,
+            DataFrameWriteOptions::default(),
+            Some(csv_options()),
+        )
+        .await?;
+
+        let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
+        let expected = [
             "+-----+", "| boo |", "+-----+", "| 0   |", "| 0   |", "| 1   |", "+-----+",
         ];
 
@@ -404,6 +445,7 @@ mod tests {
 
         unsafe {
             std::env::remove_var("CSV_BOOL_AS_INT");
+            std::env::remove_var("CSV_BOOL_NULL_AS_INT");
         }
         Ok(())
     }

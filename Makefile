@@ -1,7 +1,4 @@
-
-.PHONY: help
-help: ## Show this help
-	@egrep -h '\s##\s' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+include .base.mk
 
 .PHONY: all build build-release check test clean deploy
 all: check build test ## Perform all the checks builds and testing

@@ -4,55 +4,99 @@
 
 pipeline {
   agent none
+  options {
+    retry(1)
+    timeout(time: 1, unit: 'HOURS')
+    parallelsAlwaysFailFast()
+  }
 
   stages {
+    stage('Check') {
+      agent { label 'rust' }
+      steps {
+        sh 'cargo fmt --check'
+      }
+    }
+
     stage('Build') {
-      matrix {
-        axes {
-          axis {
-            name 'PLATFORM'
-            values 'freebsd', 'linux'
+      parallel {
+        stage('Crates - FreeBSD') {
+          agent { label 'freebsd' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C crates build'
           }
         }
 
-        agent {
-          label "${PLATFORM}"
-        }
-
-        stages {
-          stage('Checkout') {
-            steps {
-              checkout scm
-            }
-          }
-
-          stage('Prepare') {
-            steps {
-              sh './ci/setup.sh'
-            }
-          }
-
-          stage('Build') {
-            steps {
-              sh './ci/build.sh'
-            }
-          }
-
-          stage('Test') {
-            steps {
-              sh './ci/test.sh'
-            }
-          }
-
-          stage('Release') {
-            when { branch 'main' }
-            steps {
-              sh './ci/build-release.sh'
-              sh './ci/rename-artifacts.sh'
-              archiveArtifacts artifacts: 'target/artifacts/*.zip', fingerprint: true, onlyIfSuccessful: true
-            }
+        stage('Crates - Linux') {
+          agent { label 'linux' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C crates build'
           }
         }
+
+        stage('Lambdas - FreeBSD') {
+          agent { label 'freebsd' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C lambdas build'
+          }
+        }
+
+        stage('Lambdas - Linux') {
+          agent { label 'linux' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C lambdas build'
+          }
+        }
+      }
+    }
+
+    stage('Test') {
+      parallel {
+        stage('Crates Test - FreeBSD') {
+          agent { label 'freebsd' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C crates test'
+          }
+        }
+
+        stage('Crates Test - Linux') {
+          agent { label 'linux' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C crates test'
+          }
+        }
+
+        stage('Lambdas Test - FreeBSD') {
+          agent { label 'freebsd' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C lambdas test'
+          }
+        }
+
+        stage('Lambdas Test - Linux') {
+          agent { label 'linux' }
+          steps {
+            sh './ci/setup.sh'
+            sh 'gmake -C lambdas test'
+          }
+        }
+      }
+    }
+
+    stage('Release') {
+      agent { label 'linux' }
+      when { branch 'main' }
+      steps {
+        sh './ci/build-release.sh'
+        sh './ci/rename-artifacts.sh'
+        archiveArtifacts artifacts: 'target/artifacts/*.zip', fingerprint: true, onlyIfSuccessful: true
       }
     }
   }

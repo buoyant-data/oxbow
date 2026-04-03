@@ -45,6 +45,7 @@ pipeline {
           }
 
           stage('Release') {
+            when { branch 'main' }
             steps {
               sh './ci/build-release.sh'
               sh './ci/rename-artifacts.sh'

@@ -484,7 +484,7 @@ mod tests {
         );
 
         let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
-        assert_eq!(written_schema, df.schema());
+        assert_eq!(written_schema.as_arrow(), df.schema().as_arrow());
 
         Ok(())
     }

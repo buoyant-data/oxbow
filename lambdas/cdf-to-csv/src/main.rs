@@ -238,6 +238,8 @@ mod tests {
     };
     use deltalake::operations::load_cdf::CdfLoadBuilder;
 
+    use serial_test::serial;
+
     async fn cdf_test_setup() -> DeltaResult<(SessionContext, CdfLoadBuilder)> {
         let canonical = std::fs::canonicalize("../../tests/data/hive/checkpoint-cdf-table")
             .expect("Failed to canonicalize");
@@ -371,6 +373,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_writing_bool_as_int() -> DeltaResult<()> {
         unsafe {
             std::env::set_var("CSV_BOOL_AS_INT", "1");
@@ -410,6 +413,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_writing_bool_as_int_with_null() -> DeltaResult<()> {
         unsafe {
             std::env::set_var("CSV_BOOL_AS_INT", "1");
@@ -451,6 +455,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_writing_with_newlines() -> DeltaResult<()> {
         let ctx = SessionContext::new();
         let temp = tempfile::tempdir()?;

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+export RUSTUP_TOOLCHAIN="1.91"
+
 if [ -f "${HOME}/.cargo/env" ]; then
         . "${HOME}/.cargo/env"
 fi;

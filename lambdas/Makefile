@@ -1,11 +1,11 @@
 include ../.base.mk
 
-build: ## Build all the lambdas
-	for c in $(wildcard *); do \
-		if [ -d $$c ] ; then cargo build -p $$c ; fi \
-	done
+PKGS = $(dir $(wildcard */Makefile))
 
-test: ## Run checks for all lambdas
-	for c in $(wildcard *); do \
-		if [ -d $$c ] ; then cargo test -p $$c ; fi \
-	done
+.PHONY: default build test
+default: test
+build: $(PKGS)
+test: $(PKGS)
+
+$(PKGS)::
+	$(MAKE) -C $@ $(MAKECMDGOALS)

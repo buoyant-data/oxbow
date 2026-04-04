@@ -238,4 +238,7 @@ impl std::ops::Drop for TimedConsumer<'_> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    #[test]
+    fn test_stub() {}
+}

@@ -29,7 +29,7 @@ pipeline {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C crates build'
+            sh 'gmake -j2 -C crates build'
           }
         }
 
@@ -37,7 +37,7 @@ pipeline {
           agent { label 'linux' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C crates build'
+            sh 'gmake -j4 -C crates build'
           }
         }
 
@@ -45,7 +45,7 @@ pipeline {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C lambdas build'
+            sh 'gmake -j2 -C lambdas build'
           }
         }
 
@@ -53,7 +53,7 @@ pipeline {
           agent { label 'linux' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C lambdas build'
+            sh 'gmake -j4 -C lambdas build'
           }
         }
       }
@@ -65,7 +65,7 @@ pipeline {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C crates test'
+            sh 'gmake -j2 -C crates test'
           }
         }
 
@@ -73,7 +73,7 @@ pipeline {
           agent { label 'linux' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C crates test'
+            sh 'gmake -j4 -C crates test'
           }
         }
 
@@ -81,7 +81,7 @@ pipeline {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C lambdas test'
+            sh 'gmake -j2 -C lambdas test'
           }
         }
 
@@ -89,7 +89,7 @@ pipeline {
           agent { label 'linux' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C lambdas test'
+            sh 'gmake -j4 -C lambdas test'
           }
         }
       }

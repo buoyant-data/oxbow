@@ -6,7 +6,9 @@ pipeline {
   agent none
   options {
     retry(1)
-    timeout(time: 1, unit: 'HOURS')
+    // This timeout can include wait time when executors are occupied, so using
+    // something arbitrarily high for the whole pipeline
+    timeout(time: 6, unit: 'HOURS')
     parallelsAlwaysFailFast()
   }
 
@@ -19,6 +21,9 @@ pipeline {
     }
 
     stage('Build') {
+      options {
+        timeout(time: 1, unit: 'HOURS')
+      }
       parallel {
         stage('Crates - FreeBSD') {
           agent { label 'freebsd' }
@@ -93,6 +98,9 @@ pipeline {
     stage('Release') {
       agent { label 'linux' }
       when { branch 'main' }
+      options {
+        timeout(time: 2, unit: 'HOURS')
+      }
       steps {
         sh './ci/build-release.sh'
         sh './ci/rename-artifacts.sh'

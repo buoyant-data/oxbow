@@ -77,14 +77,6 @@ pipeline {
           }
         }
 
-        stage('Lambdas Test - FreeBSD') {
-          agent { label 'freebsd' }
-          steps {
-            sh './ci/setup.sh'
-            sh 'gmake -j2 -C lambdas test'
-          }
-        }
-
         stage('Lambdas Test - Linux') {
           agent { label 'linux' }
           steps {

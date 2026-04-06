@@ -60,6 +60,9 @@ pipeline {
     }
 
     stage('Test') {
+      options {
+        timeout(time: 1, unit: 'HOURS')
+      }
       parallel {
         stage('Crates Test - FreeBSD') {
           agent { label 'freebsd' }
@@ -88,15 +91,34 @@ pipeline {
     }
 
     stage('Release') {
-      agent { label 'linux' }
+      failFast true
       when { branch 'main' }
       options {
         timeout(time: 2, unit: 'HOURS')
       }
-      steps {
-        sh './ci/build-release.sh'
-        sh './ci/rename-artifacts.sh'
-        archiveArtifacts artifacts: 'target/artifacts/*.zip', fingerprint: true, onlyIfSuccessful: true
+      matrix {
+        axes {
+          axis {
+            name 'PLATFORM'
+            //values 'x86-64', 'arm64'
+            values 'x86-64'
+          }
+          axis {
+            name 'LAMBDA'
+            values 'oxbow-lambda', 'sqs-ingest', 'file-loader', 'cdf-to-csv', 'group-events', 'auto-tag'
+          }
+        }
+        stages {
+          stage('Build') {
+            // The zig builds don't work very well on FreeBSD
+            agent { label 'linux' }
+            steps {
+              sh "cargo lambda build --${PLATFORM} --package ${LAMBDA} --lambda-dir target/lambda/${PLATFORM} --release --output-format zip"
+              sh "mv target/lambda/${PLATFORM}/${LAMBDA}/bootstrap.zip target/lambda/${LAMBDA}-${PLATFORM}.zip"
+              archiveArtifacts artifacts: "target/lambda/${LAMBDA}-${PLATFORM}.zip", fingerprint: true, onlyIfSuccessful: true
+            }
+          }
+        }
       }
     }
   }

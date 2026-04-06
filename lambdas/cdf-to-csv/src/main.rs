@@ -197,17 +197,26 @@ fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
     let mut df = input.clone();
     let schema = input.schema();
     for field in schema.fields() {
+        for dt in [&DataType::LargeUtf8, &DataType::Utf8, &DataType::Utf8View] {
+            if field.data_type() == dt {
+                df = df.with_column(
+                    field.name(),
+                    replace(col(field.name()), lit("\n"), lit("\\n")),
+                )?;
+
+                if std::env::var("CSV_ESCAPE_FORWARD_SLASH").is_ok() {
+                    df = df.with_column(
+                        field.name(),
+                        replace(col(field.name()), lit("\\"), lit("\\\\")),
+                    )?;
+                }
+            }
+        }
         if field.data_type() == &DataType::Boolean && std::env::var("CSV_BOOL_AS_INT").is_ok() {
             if std::env::var("CSV_BOOL_NULL_AS_INT").is_ok() {
                 df = df.fill_null(ScalarValue::from(0), [field.name().clone()].to_vec())?;
             }
             df = df.with_column(field.name(), cast(col(field.name()), DataType::Int32))?;
-        }
-        if field.data_type() == &DataType::Utf8 || field.data_type() == &DataType::LargeUtf8 {
-            df = df.with_column(
-                field.name(),
-                replace(col(field.name()), lit("\n"), lit("\\n")),
-            )?;
         }
     }
     Ok(df)
@@ -358,7 +367,7 @@ mod tests {
         let mut insert_found = false;
         let mut delete_found = false;
         while let Some(Ok(entry)) = stream.next().await {
-            println!("entry: {entry:?}");
+            dbg!(&entry);
             if entry.location.prefix_matches(&Path::from("deletes")) {
                 delete_found = true;
             }
@@ -457,6 +466,9 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_writing_with_newlines() -> DeltaResult<()> {
+        unsafe {
+            std::env::set_var("CSV_ESCAPE_FORWARD_SLASH", "1");
+        }
         let ctx = SessionContext::new();
         let temp = tempfile::tempdir()?;
         let tempfile = temp.path().join("some.csv");
@@ -487,9 +499,18 @@ mod tests {
             lines.len(),
             "Should have only written four lines for the sample input data"
         );
+        assert_eq!(
+            lines[3].as_ref().expect("Failure"),
+            r#""","209","149",":-\\","1.0""#,
+            "The CSV output was not what we expected"
+        );
 
         let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
         assert_eq!(written_schema.as_arrow(), df.schema().as_arrow());
+
+        unsafe {
+            std::env::remove_var("CSV_ESCAPE_FORWARD_SLASH");
+        }
 
         Ok(())
     }

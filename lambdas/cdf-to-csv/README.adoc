@@ -58,6 +58,10 @@ s3://csvs/
 |
 | Optional primary key for delete CSV files
 
+| `CSV_ESCAPE_FORWARD_SLASH`
+|
+| When this environment exists, `\` characters in CSV strings will be converted into `\\`
+
 | `CSV_BOOL_AS_INT`
 |
 | When this environment variable exists, any boolean `true` will be written as `1` in the CSV output. False is encoded as `0`.

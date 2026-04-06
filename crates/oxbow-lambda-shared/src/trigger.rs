@@ -50,7 +50,7 @@ impl TableTrigger {
     ///
     /// This can be helpful to understand what the lower end of the triggered version changes may
     /// be when they are grouped together
-    pub fn smallest_version(&self) -> Option<i64> {
+    pub fn smallest_version(&self) -> Option<u64> {
         if self.changes.is_empty() {
             return None;
         }
@@ -64,7 +64,7 @@ impl TableTrigger {
     }
 
     /// Return the largest transaction version in this trigger
-    pub fn largest_version(&self) -> Option<i64> {
+    pub fn largest_version(&self) -> Option<u64> {
         if self.changes.is_empty() {
             return None;
         }
@@ -166,7 +166,7 @@ impl From<&str> for Modification {
 #[derive(Debug, Default, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ChangeType {
     TransactionLog {
-        version: i64,
+        version: u64,
     },
     ChangeDataFeed,
     DataFile,

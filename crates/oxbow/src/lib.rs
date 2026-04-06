@@ -218,7 +218,7 @@ pub(crate) fn default_commit_properties() -> CommitProperties {
 }
 
 /// Commit the given [Action]s to the [DeltaTable]
-pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<i64> {
+pub async fn commit_to_table(actions: &[Action], table: &DeltaTable) -> DeltaResult<u64> {
     if actions.is_empty() {
         return table.version().ok_or(DeltaTableError::NotInitialized);
     }

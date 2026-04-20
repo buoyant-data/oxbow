@@ -305,7 +305,7 @@ async fn metadata_actions_for(
             let new_schema = Schema::try_new(new_schema)?;
             let mut action = deltalake::kernel::models::new_metadata(
                 &new_schema,
-                table_metadata.partition_columns().clone(),
+                table_metadata.partition_columns(),
                 table_metadata.configuration().clone(),
             )?;
             if let Some(name) = table_metadata.name() {
@@ -497,7 +497,9 @@ mod tests {
     use super::*;
 
     use chrono::prelude::Utc;
+    use chrono::DateTime;
     use deltalake::Path;
+    use deltalake::logstore::object_store::ObjectStoreExt as _;
 
     /*
      * test utilities to share between test cases
@@ -906,11 +908,17 @@ mod tests {
             "c2=foo1/part-00001-1c702e73-89b5-465a-9c6a-25f7559cd150.c000.snappy.parquet",
         );
         let url = Url::from_file_path(std::fs::canonicalize(
-            "../../tests/data/hive/deltatbl-partitioned",
+            "../../tests/data/hive/deltatbl-partitioned/",
         )?)
         .expect("Failed to parse");
         let storage = logstore_for(&url, StorageConfig::default()).expect("Failed to get store");
-        let meta = storage.object_store(None).head(&location).await.unwrap();
+        let meta = ObjectMeta {
+            location,
+            last_modified: Utc::now(),
+            size: 0,
+            e_tag: None,
+            version: None,
+        };
 
         let schema = fetch_parquet_schema(storage.object_store(None).clone(), meta)
             .await
@@ -976,7 +984,7 @@ mod tests {
         let (_tempdir, table) = util::test_table().await;
         let files =
             util::paths_to_objectmetas(table.get_files_by_partitions(&[]).await?.into_iter());
-        let mods = TableMods::new(&vec![], &files);
+        let mods = TableMods::new(&[], &files);
 
         let actions = actions_for(&mods, &table, false)
             .await
@@ -1161,7 +1169,7 @@ mod tests {
         let initial_version = table.version().unwrap();
         assert_eq!(0, initial_version);
 
-        let mods = TableMods::new(&files, &vec![files[0].clone()]);
+        let mods = TableMods::new(&files, &[files[0].clone()]);
         let actions = actions_for(&mods, &table, false)
             .await
             .expect("Failed to curate actions");
@@ -1171,7 +1179,7 @@ mod tests {
             "Expected an 3 add actions and 1 remove action"
         );
 
-        let result = commit_to_table(&actions, &mut table).await.unwrap();
+        let result = commit_to_table(&actions, &table).await.unwrap();
         assert_eq!(
             result,
             initial_version + 1,

@@ -5,7 +5,7 @@ use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
 use lambda_runtime::tracing::{debug, error, info};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use object_store::{BackoffConfig, RetryConfig};
+use deltalake::logstore::object_store::{aws::AmazonS3Builder, BackoffConfig, RetryConfig};
 use parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStream, ParquetRecordBatchStreamBuilder,
 };
@@ -84,7 +84,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
     // Input store to fetch parquet files from S3
     let input_store: Arc<dyn ObjectStore> = Arc::new(
-        object_store::aws::AmazonS3Builder::from_env()
+        AmazonS3Builder::from_env()
             .with_bucket_name(&input_bucket)
             .with_retry(retry.clone())
             .build()
@@ -93,7 +93,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
     // Output store to write parquet files to S3
     let output_store: Arc<dyn ObjectStore> = Arc::new(
-        object_store::aws::AmazonS3Builder::from_env()
+        AmazonS3Builder::from_env()
             .with_bucket_name(&output_bucket)
             .with_retry(retry)
             .build()
@@ -243,6 +243,7 @@ mod tests {
     use super::*;
     use aws_lambda_events::s3::{S3Entity, S3EventRecord, S3Object};
     use aws_lambda_events::sqs::SqsMessage;
+    use deltalake::logstore::object_store::local::LocalFileSystem;
 
     #[test]
     fn test_suffix_from_record() {
@@ -312,15 +313,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_concat_parquet_files() {
-        use object_store::local::LocalFileSystem;
         use tempfile::TempDir;
 
         // Create temporary directory for output only
         let output_dir = TempDir::new().expect("Failed to create temp output dir");
 
-        let input_store: Arc<dyn object_store::ObjectStore> =
+        let input_store: Arc<dyn ObjectStore> =
             Arc::new(LocalFileSystem::new_with_prefix("../../tests/data/hive").unwrap());
-        let output_store: Arc<dyn object_store::ObjectStore> =
+        let output_store: Arc<dyn ObjectStore> =
             Arc::new(LocalFileSystem::new_with_prefix(output_dir.path()).unwrap());
 
         let files = vec![
@@ -393,14 +393,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_concat_partitioned_parquet_files() {
-        use object_store::local::LocalFileSystem;
         use tempfile::TempDir;
 
         let output_dir = TempDir::new().expect("Failed to create temp output dir");
 
-        let input_store: Arc<dyn object_store::ObjectStore> =
+        let input_store: Arc<dyn ObjectStore> =
             Arc::new(LocalFileSystem::new_with_prefix("../../tests/data/hive").unwrap());
-        let output_store: Arc<dyn object_store::ObjectStore> =
+        let output_store: Arc<dyn ObjectStore> =
             Arc::new(LocalFileSystem::new_with_prefix(output_dir.path()).unwrap());
 
         let files = vec![
@@ -517,7 +516,6 @@ mod tests {
     }
 
     async fn count_parquet_rows(file_path: &std::path::Path) -> Result<usize, Error> {
-        use object_store::local::LocalFileSystem;
         use parquet::arrow::async_reader::ParquetRecordBatchStreamBuilder;
 
         let store = LocalFileSystem::new_with_prefix(file_path.parent().unwrap())?;

@@ -127,6 +127,7 @@ mod tests {
     use super::*;
     use deltalake::kernel::DataType;
     use deltalake::*;
+    use deltalake::logstore::object_store::ObjectStoreExt as _;
 
     async fn setup_test_table() -> DeltaResult<DeltaTable> {
         DeltaOps::new_in_memory()

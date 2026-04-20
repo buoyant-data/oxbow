@@ -34,11 +34,11 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 url = { version = "2.3", features = ["serde"] }
 
 [patch.crates-io]
-datafusion = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-52.4.1" }
-datafusion-datasource = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-52.4.1" }
-datafusion-physical-expr-adapter = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-52.4.1" }
-datafusion-ffi = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-52.4.1" }
-datafusion-proto = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-52.4.1" }
+datafusion = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
+datafusion-datasource = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
+datafusion-physical-expr-adapter = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
+datafusion-ffi = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
+datafusion-proto = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
 
 [profile.release]
 panic = "abort"

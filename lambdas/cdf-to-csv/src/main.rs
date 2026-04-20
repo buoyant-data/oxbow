@@ -11,9 +11,10 @@ use deltalake::datafusion::scalar::ScalarValue;
 use deltalake::delta_datafusion::DeltaCdfTableProvider;
 use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use object_store::ObjectStore;
-use object_store::path::Path;
-use object_store::prefix::PrefixStore;
+use deltalake::logstore::object_store::{ObjectStore, ObjectStoreExt as _};
+use deltalake::logstore::object_store::aws::AmazonS3Builder;
+use deltalake::logstore::object_store::path::Path;
+use deltalake::logstore::object_store::prefix::PrefixStore;
 use oxbow_lambda_shared::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -65,7 +66,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             // the context is unique to a triggered table
             let ctx = SessionContext::new_with_config(df_config.clone());
             let store: Arc<dyn ObjectStore> = Arc::new(
-                object_store::aws::AmazonS3Builder::from_env()
+                AmazonS3Builder::from_env()
                     .with_url(&destination)
                     .build()
                     .expect("Failed to create an output object_store"),
@@ -240,7 +241,7 @@ mod tests {
 
     use super::*;
     use futures::StreamExt;
-    use object_store::ObjectStore;
+    use deltalake::logstore::object_store::{ObjectStore, memory::InMemory};
 
     use deltalake::datafusion::{
         common::assert_batches_sorted_eq, dataframe::DataFrameWriteOptions,
@@ -263,7 +264,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mark_complete() -> DeltaResult<()> {
-        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         let completion = Completion {
             inserts: 1,
             deletes: 0,
@@ -333,7 +334,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_csv() -> DeltaResult<()> {
         let (ctx, cdf) = cdf_test_setup().await?;
-        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         let insert_store = Arc::new(PrefixStore::new(store.clone(), "inserts"));
         let delete_store = Arc::new(PrefixStore::new(store.clone(), "deletes"));
         ctx.register_object_store(&Url::parse("cdfo://inserts").unwrap(), insert_store.clone());
@@ -395,7 +396,7 @@ mod tests {
         let mut df = ctx
             .read_json(
                 "./tests/data/row.json",
-                NdJsonReadOptions::default().schema_infer_max_records(1),
+                JsonReadOptions::default().schema_infer_max_records(1),
             )
             .await?;
         let written = df.clone();
@@ -436,7 +437,7 @@ mod tests {
         let mut df = ctx
             .read_json(
                 "./tests/data/row.json",
-                NdJsonReadOptions::default().schema_infer_max_records(1),
+                JsonReadOptions::default().schema_infer_max_records(1),
             )
             .await?;
         let written = df.clone();
@@ -477,7 +478,7 @@ mod tests {
         let mut df = ctx
             .read_json(
                 "./tests/data/row.json",
-                NdJsonReadOptions::default().schema_infer_max_records(1),
+                JsonReadOptions::default().schema_infer_max_records(1),
             )
             .await?;
         let written = df.clone();

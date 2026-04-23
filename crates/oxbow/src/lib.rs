@@ -121,22 +121,19 @@ pub async fn discover_parquet_files(
      */
     while let Some(path) = iter.next().await {
         // Result<ObjectMeta> has been yielded
-        if let Ok(meta) = path {
-            if let Some(ext) = meta.location.extension() {
-                match ext {
-                    "parquet" => {
-                        if let Some(filename) = meta.location.filename() {
-                            if !filename.ends_with(".checkpoint.parquet") {
-                                debug!("Discovered file: {:?}", meta);
-                                result.push(meta);
-                            } else {
-                                warn!(
-                                    "Was asked to discover parquet files on what appears to already be a table, and found checkpoint files: {filename}"
-                                );
-                            }
-                        }
+        if let Ok(meta) = path
+            && let Some(ext) = meta.location.extension()
+        {
+            if ext == "parquet" {
+                if let Some(filename) = meta.location.filename() {
+                    if !filename.ends_with(".checkpoint.parquet") {
+                        debug!("Discovered file: {:?}", meta);
+                        result.push(meta);
+                    } else {
+                        warn!(
+                            "Was asked to discover parquet files on what appears to already be a table, and found checkpoint files: {filename}"
+                        );
                     }
-                    &_ => {}
                 }
             }
         }
@@ -496,8 +493,8 @@ fn coerce_field(
 mod tests {
     use super::*;
 
-    use chrono::prelude::Utc;
     use chrono::DateTime;
+    use chrono::prelude::Utc;
     use deltalake::Path;
     use deltalake::logstore::object_store::ObjectStoreExt as _;
 

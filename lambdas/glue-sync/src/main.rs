@@ -76,9 +76,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
         // Map the key key to a GlueTable properly, currently only bucket notifications from the
         // aurora_raw/ space is supported.
-        let parsed_table = extract_table_from_key(&key, &pattern).expect(&format!(
-            "Expected to be able to parse out a table name: {key:?}"
-        ));
+        let parsed_table = extract_table_from_key(&key, &pattern)
+            .unwrap_or_else(|| panic!("Expected to be able to parse out a table name: {key:?}"));
 
         if let Some(glue_table) =
             fetch_table(&parsed_table.database, &parsed_table.name, &client).await
@@ -149,34 +148,34 @@ fn storage_descriptor_from(
     delta_table: &DeltaTable,
     glue_table: &Table,
 ) -> Option<StorageDescriptor> {
-    if let Some(descriptor) = glue_table.storage_descriptor() {
-        if let Some(cols) = &descriptor.columns {
-            let delta_columns_for_glue = glue_columns_for(delta_table);
-            let m: HashMap<String, Option<String>> =
-                HashMap::from_iter(cols.iter().map(|c| (c.name.clone(), c.r#type.clone())));
-            let delta_columns_for_glue: Vec<Column> = delta_columns_for_glue
-                .into_iter()
-                .filter(|c| !m.contains_key(&c.name))
-                .collect();
+    if let Some(descriptor) = glue_table.storage_descriptor()
+        && let Some(cols) = &descriptor.columns
+    {
+        let delta_columns_for_glue = glue_columns_for(delta_table);
+        let m: HashMap<String, Option<String>> =
+            HashMap::from_iter(cols.iter().map(|c| (c.name.clone(), c.r#type.clone())));
+        let delta_columns_for_glue: Vec<Column> = delta_columns_for_glue
+            .into_iter()
+            .filter(|c| !m.contains_key(&c.name))
+            .collect();
 
-            if delta_columns_for_glue.is_empty() {
-                debug!("There are no columns to add to glue, bailing");
-                return None;
-            }
-            let descriptor = StorageDescriptor::builder()
-                .set_location(descriptor.location.clone())
-                .set_input_format(descriptor.input_format.clone())
-                .set_output_format(descriptor.output_format.clone())
-                .set_bucket_columns(descriptor.bucket_columns.clone())
-                .set_serde_info(descriptor.serde_info.clone())
-                .set_sort_columns(descriptor.sort_columns.clone())
-                .set_parameters(descriptor.parameters.clone())
-                .set_additional_locations(descriptor.additional_locations.clone())
-                .set_columns(Some([cols.clone(), delta_columns_for_glue].concat()))
-                .build();
-            debug!("Computed descriptor: {descriptor:?}");
-            return Some(descriptor);
+        if delta_columns_for_glue.is_empty() {
+            debug!("There are no columns to add to glue, bailing");
+            return None;
         }
+        let descriptor = StorageDescriptor::builder()
+            .set_location(descriptor.location.clone())
+            .set_input_format(descriptor.input_format.clone())
+            .set_output_format(descriptor.output_format.clone())
+            .set_bucket_columns(descriptor.bucket_columns.clone())
+            .set_serde_info(descriptor.serde_info.clone())
+            .set_sort_columns(descriptor.sort_columns.clone())
+            .set_parameters(descriptor.parameters.clone())
+            .set_additional_locations(descriptor.additional_locations.clone())
+            .set_columns(Some([cols.clone(), delta_columns_for_glue].concat()))
+            .build();
+        debug!("Computed descriptor: {descriptor:?}");
+        return Some(descriptor);
     }
     None
 }
@@ -306,10 +305,10 @@ fn key_is_delta_table(key: &str) -> Option<String> {
     let regex = Regex::new(r#"(?P<root>.*)\/_delta_log\/.*\.json"#)
         .expect("Failed to compile the regular expression");
 
-    if let Some(caps) = regex.captures(key) {
-        if let Some(root) = caps.name("root") {
-            return Some(root.as_str().into());
-        }
+    if let Some(caps) = regex.captures(key)
+        && let Some(root) = caps.name("root")
+    {
+        return Some(root.as_str().into());
     }
     None
 }

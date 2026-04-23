@@ -81,9 +81,8 @@ async fn process_record(
 
     // Map the key key to a GlueTable properly, currently only bucket notifications from the
     // aurora_raw/ space is supported.
-    let glue_table = extract_table_from_key(&key, &pattern).expect(&format!(
-        "Expected to be able to parse out a table name: {key:?}"
-    ));
+    let glue_table = extract_table_from_key(&key, &pattern)
+        .unwrap_or_else(|| panic!("Expected to be able to parse out a table name: {key:?}"));
 
     match glue
         .get_table()
@@ -161,22 +160,20 @@ async fn process_record(
                             .send()
                             .await?;
 
-                        if let Some(execution) = execution.query_execution {
-                            if let Some(status) = execution.status {
-                                debug!("Current status of query execution: {status:?}");
-                                match status.state {
-                                    Some(aws_sdk_athena::types::QueryExecutionState::Succeeded) => {
-                                        break;
-                                    }
-                                    Some(aws_sdk_athena::types::QueryExecutionState::Failed) => {
-                                        error!("Query failed! {status:?}");
-                                        return Err(
-                                            "Failed to query Athena for some reason!".into()
-                                        );
-                                    }
-                                    // Safely ignore Running, Queued, and other statuses
-                                    _ => {}
+                        if let Some(execution) = execution.query_execution
+                            && let Some(status) = execution.status
+                        {
+                            debug!("Current status of query execution: {status:?}");
+                            match status.state {
+                                Some(aws_sdk_athena::types::QueryExecutionState::Succeeded) => {
+                                    break;
                                 }
+                                Some(aws_sdk_athena::types::QueryExecutionState::Failed) => {
+                                    error!("Query failed! {status:?}");
+                                    return Err("Failed to query Athena for some reason!".into());
+                                }
+                                // Safely ignore Running, Queued, and other statuses
+                                _ => {}
                             }
                         }
 
@@ -235,10 +232,10 @@ fn key_is_delta_table(key: &str) -> Option<String> {
     let regex = Regex::new(r#"(?P<root>.*)\/_delta_log\/.*\.json"#)
         .expect("Failed to compile the regular expression");
 
-    if let Some(caps) = regex.captures(key) {
-        if let Some(root) = caps.name("root") {
-            return Some(root.as_str().into());
-        }
+    if let Some(caps) = regex.captures(key)
+        && let Some(root) = caps.name("root")
+    {
+        return Some(root.as_str().into());
     }
     None
 }

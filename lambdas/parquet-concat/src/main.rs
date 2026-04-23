@@ -3,9 +3,9 @@
 ///
 use aws_lambda_events::event::sqs::SqsEvent;
 use aws_lambda_events::s3::S3EventRecord;
+use deltalake::logstore::object_store::{BackoffConfig, RetryConfig, aws::AmazonS3Builder};
 use lambda_runtime::tracing::{debug, error, info};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use deltalake::logstore::object_store::{aws::AmazonS3Builder, BackoffConfig, RetryConfig};
 use parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStream, ParquetRecordBatchStreamBuilder,
 };

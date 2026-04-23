@@ -9,12 +9,12 @@ use deltalake::datafusion::dataframe::DataFrameWriteOptions;
 use deltalake::datafusion::prelude::*;
 use deltalake::datafusion::scalar::ScalarValue;
 use deltalake::delta_datafusion::DeltaCdfTableProvider;
-use deltalake::{DeltaOps, DeltaResult};
-use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use deltalake::logstore::object_store::{ObjectStore, ObjectStoreExt as _};
 use deltalake::logstore::object_store::aws::AmazonS3Builder;
 use deltalake::logstore::object_store::path::Path;
 use deltalake::logstore::object_store::prefix::PrefixStore;
+use deltalake::logstore::object_store::{ObjectStore, ObjectStoreExt as _};
+use deltalake::{DeltaOps, DeltaResult};
+use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use oxbow_lambda_shared::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -240,8 +240,8 @@ mod tests {
     use std::io::{BufRead, BufReader};
 
     use super::*;
-    use futures::StreamExt;
     use deltalake::logstore::object_store::{ObjectStore, memory::InMemory};
+    use futures::StreamExt;
 
     use deltalake::datafusion::{
         common::assert_batches_sorted_eq, dataframe::DataFrameWriteOptions,

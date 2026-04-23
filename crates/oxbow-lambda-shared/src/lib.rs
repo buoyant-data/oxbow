@@ -46,10 +46,10 @@ pub fn records_with_url_decoded_keys(records: &[S3EventRecord]) -> Vec<S3EventRe
         .iter()
         .map(|record| {
             let mut replacement = record.clone();
-            if let Some(key) = &replacement.s3.object.key {
-                if let Ok(decoded_key) = decode(key) {
-                    replacement.s3.object.url_decoded_key = Some(decoded_key.into_owned());
-                }
+            if let Some(key) = &replacement.s3.object.key
+                && let Ok(decoded_key) = decode(key)
+            {
+                replacement.s3.object.url_decoded_key = Some(decoded_key.into_owned());
             }
             replacement
         })
@@ -111,23 +111,21 @@ pub fn infer_log_path_from(path: &str) -> String {
         .expect("Failed to get parent() of path")
         .components()
     {
-        if let Component::Normal(os_str) = component {
-            if let Some(segment) = os_str.to_str() {
-                /*
-                 * If a segment has what looks like a hive-style partition, bail and call that the root of
-                 * the delta table
-                 */
-                if segment.find('=') >= Some(0) {
-                    break;
-                }
-                if segment == "_delta_log" {
-                    debug!(
-                        "`_delta_log` found in infer_log_path_from, omitting it and breaking out"
-                    );
-                    break;
-                }
-                root.push(segment);
+        if let Component::Normal(os_str) = component
+            && let Some(segment) = os_str.to_str()
+        {
+            /*
+             * If a segment has what looks like a hive-style partition, bail and call that the root of
+             * the delta table
+             */
+            if segment.find('=') >= Some(0) {
+                break;
             }
+            if segment == "_delta_log" {
+                debug!("`_delta_log` found in infer_log_path_from, omitting it and breaking out");
+                break;
+            }
+            root.push(segment);
         }
     }
     root.join("/")

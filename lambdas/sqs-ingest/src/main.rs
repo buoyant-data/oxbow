@@ -128,12 +128,11 @@ fn extract_json_from_sqs_direct(messages: Vec<aws_sdk_sqs::types::Message>) -> V
             .iter()
             .filter(|m| m.body().is_some())
             .map(|m| m.body().as_ref().unwrap().to_string())
-            .map(|b| {
+            .flat_map(|b| {
                 let value: SNSWrapper =
                     serde_json::from_str(&b).expect("Failed to deserialize SNS payload as JSON");
                 value.to_vec()
             })
-            .flatten()
             .collect::<Vec<String>>()
     } else {
         messages
@@ -151,12 +150,11 @@ fn extract_json_from_records(records: &[SqsMessage]) -> Vec<String> {
         records
             .iter()
             .filter(|m| m.body.is_some())
-            .map(|m| {
+            .flat_map(|m| {
                 let value: SNSWrapper = serde_json::from_str(m.body.as_ref().unwrap())
                     .expect("Failed to deserialize SNS payload as JSON");
                 value.to_vec()
             })
-            .flatten()
             .collect::<Vec<String>>()
     } else {
         records

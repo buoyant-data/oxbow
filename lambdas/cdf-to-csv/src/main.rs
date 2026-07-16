@@ -3,6 +3,7 @@
 //! produce CSV files to ingest into Aurora for Change Data Feeds
 
 use aws_lambda_events::event::sqs::SqsEvent;
+use deltalake::arrow::datatypes::Schema;
 use deltalake::datafusion::common::parsers::CsvQuoteStyle;
 use deltalake::datafusion::config::CsvOptions;
 use deltalake::datafusion::dataframe::DataFrameWriteOptions;
@@ -73,6 +74,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             );
 
             let table = deltalake::open_table(trigger.location().clone()).await?;
+            let schema = table.snapshot()?.snapshot().arrow_schema().clone();
             info!(
                 "Loaded a table for {} at version {:?}",
                 trigger.location().as_str(),
@@ -126,6 +128,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             let completion = Completion {
                 inserts: inserts.iter().map(|rb| rb.num_rows()).sum(),
                 deletes: deletes.iter().map(|rb| rb.num_rows()).sum(),
+                schema,
             };
 
             mark_complete(store.clone(), &completion).await?;
@@ -188,6 +191,7 @@ async fn mark_complete(store: Arc<dyn ObjectStore>, completion: &Completion) -> 
 struct Completion {
     inserts: usize,
     deletes: usize,
+    schema: Arc<Schema>,
 }
 
 /// Escape the string columns for newlines in the input [DataFrame] to avoid any issues with CSV
@@ -264,10 +268,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_mark_complete() -> DeltaResult<()> {
+        use deltalake::arrow::datatypes::{DataType, Field};
         let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let field_a = Field::new("a", DataType::Int64, false);
+        let field_b = Field::new("b", DataType::Boolean, false);
+
+        let schema = Schema::new(vec![field_a, field_b]);
         let completion = Completion {
             inserts: 1,
             deletes: 0,
+            schema: Arc::new(schema),
         };
         mark_complete(store.clone(), &completion).await?;
         let _ = store.head(&Path::from("cdf-completion.json")).await?;
@@ -399,7 +409,7 @@ mod tests {
                 JsonReadOptions::default().schema_infer_max_records(1),
             )
             .await?;
-        let written = df.clone();
+        let _written = df.clone();
         df = escape_dataframe(df)?;
 
         df.write_csv(
@@ -440,7 +450,7 @@ mod tests {
                 JsonReadOptions::default().schema_infer_max_records(1),
             )
             .await?;
-        let written = df.clone();
+        let _written = df.clone();
         df = escape_dataframe(df)?;
 
         df.write_csv(

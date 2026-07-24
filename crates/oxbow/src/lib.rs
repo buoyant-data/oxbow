@@ -15,6 +15,7 @@ use deltalake::protocol::*;
 use deltalake::{DeltaResult, DeltaTable, DeltaTableError, ObjectMeta, ObjectStore};
 use deltalake::{Path, kernel::*};
 use futures::StreamExt;
+use parquet::file::statistics::Statistics;
 use tracing::log::*;
 use url::Url;
 
@@ -244,7 +245,14 @@ pub async fn actions_for(
         .cloned()
         .collect();
 
-    let adds = add_actions_for(&new_files);
+    let adds = if std::env::var("WITH_STATS")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true")
+    {
+        add_actions_for_with_stats(&new_files, table.log_store().object_store(None)).await?
+    } else {
+        add_actions_for(&new_files)
+    };
     let removes = remove_actions_for(
         &mods
             .removes()
@@ -377,6 +385,44 @@ pub fn add_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
         .collect()
 }
 
+/// Check if the WITH_STATS environment variable is set
+fn with_stats_enabled() -> bool {
+    std::env::var("WITH_STATS").is_ok()
+}
+
+/// Generate Add actions with optional statistics
+pub async fn add_actions_for_with_stats(
+    files: &[ObjectMeta],
+    store: Arc<dyn ObjectStore>,
+) -> DeltaResult<Vec<Action>> {
+    if !with_stats_enabled() {
+        return Ok(add_actions_for(files));
+    }
+
+    let mut actions = Vec::with_capacity(files.len());
+    for om in files {
+        let mut add = Add {
+            path: om.location.to_string(),
+            size: om.size as i64,
+            modification_time: om.last_modified.timestamp_millis(),
+            data_change: true,
+            partition_values: partitions_from(om.location.as_ref()),
+            ..Default::default()
+        };
+
+        // Read and add statistics if parquet file
+        if om.location.to_string().ends_with(".parquet") {
+            if let Ok(stats_json) = read_parquet_statistics(store.clone(), om).await {
+                add.stats = Some(stats_json.to_string());
+            }
+        }
+
+        actions.push(Action::Add(add));
+    }
+
+    Ok(actions)
+}
+
 /// Provide a series of Remove actions for the given [ObjectMeta] entries
 pub fn remove_actions_for(files: &[ObjectMeta]) -> Vec<Action> {
     files
@@ -435,6 +481,83 @@ async fn load_parquet_metadata(
 
     deltalake::parquet::schema::printer::print_parquet_metadata(&mut std::io::stdout(), metadata);
     Ok(metadata.clone())
+}
+
+/// Read statistics from a parquet file
+/**
+ * Read statistics from a parquet file and return as a serde_json::Value
+ *
+ * Returns the statistics as a serde_json::Value, which can be serialized to JSON string
+ * and stored in the Add action's stats field
+ */
+pub async fn read_parquet_statistics(
+    store: Arc<dyn ObjectStore>,
+    file: &ObjectMeta,
+) -> DeltaResult<serde_json::Value> {
+    use parquet::file::statistics::Statistics as ParquetStatistics;
+
+    let reader = ParquetObjectReader::new(store.clone(), file.location.clone());
+    let stream_builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
+    let metadata = stream_builder.metadata().clone();
+
+    let mut json_stats = serde_json::json!({});
+
+    // Extract statistics from row groups
+    for row_group_idx in 0..metadata.num_row_groups() {
+        let row_group = metadata.row_group(row_group_idx);
+
+        for col_idx in 0..row_group.num_columns() {
+            let column_chunk = row_group.column(col_idx);
+
+            if let Some(column_stats) = column_chunk.statistics() {
+                let field_name = metadata
+                    .file_metadata()
+                    .schema_descr()
+                    .column(col_idx)
+                    .name()
+                    .to_string();
+
+                // Match on the statistics enum to extract min/max values
+                let (min_value, max_value) = match column_stats {
+                    ParquetStatistics::Boolean(stats) => (
+                        stats.min_opt().map(|v| v.to_string()),
+                        stats.max_opt().map(|v| v.to_string()),
+                    ),
+                    ParquetStatistics::Int32(stats) => (
+                        stats.min_opt().map(|v| v.to_string()),
+                        stats.max_opt().map(|v| v.to_string()),
+                    ),
+                    ParquetStatistics::Int64(stats) => (
+                        stats.min_opt().map(|v| v.to_string()),
+                        stats.max_opt().map(|v| v.to_string()),
+                    ),
+                    ParquetStatistics::Float(stats) => (
+                        stats.min_opt().map(|v| v.to_string()),
+                        stats.max_opt().map(|v| v.to_string()),
+                    ),
+                    ParquetStatistics::Double(stats) => (
+                        stats.min_opt().map(|v| v.to_string()),
+                        stats.max_opt().map(|v| v.to_string()),
+                    ),
+                    _ => (None, None), // Other types not supported yet
+                };
+
+                // Build JSON structure for this column's statistics
+                if min_value.is_some() || max_value.is_some() {
+                    let mut column_stats_obj = serde_json::json!({});
+                    if let Some(min) = min_value {
+                        column_stats_obj["min"] = serde_json::json!(min);
+                    }
+                    if let Some(max) = max_value {
+                        column_stats_obj["max"] = serde_json::json!(max);
+                    }
+                    json_stats[field_name] = column_stats_obj;
+                }
+            }
+        }
+    }
+
+    Ok(json_stats)
 }
 
 fn coerce_field(

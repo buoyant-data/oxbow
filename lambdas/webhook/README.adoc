@@ -7,10 +7,10 @@ ifdef::env-github[]
 endif::[]
 :toc: macro
 
-= Webhook Lmabda
+|= Webhook Lambda
 
-The webhook lambda can help receive JSONL formatted webhook payloads and conver
-those into append-only writes to pre-configured Delta tables. It is meant to be
+The webhook lambda can help receive JSONL formatted webhook payloads and convert
+those into append-only writes to pre-configured Delta tables.
 deployed once per Delta table, that is to say that if you need to do ingestion
 for multiple Delta tables the best option is to deploy multiple copies of the
 Webhook lambda, each with a different configuration.

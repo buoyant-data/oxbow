@@ -47,6 +47,54 @@ into a Delta table!
 
 === Lambda
 
+The Oxbow project includes several AWS Lambda functions for different Delta Lake
+operations, each designed for specific use cases.
+
+==== Available Lambdas
+
+|===
+| Lambda | Purpose | Documentation
+
+| link:lambdas/oxbow/README.adoc[oxbow]
+| Main lambda for converting parquet files to Delta Lake tables
+| See link:lambdas/oxbow/README.adoc[oxbow lambda docs]
+
+| link:lambdas/file-loader/README.adoc[file-loader]
+| Converts structured data files to parquet format for Delta Lake ingestion
+| See link:lambdas/file-loader/README.adoc[file-loader docs]
+
+| link:lambdas/group-events/README.adoc[group-events]
+| Groups S3 events to reduce lock contention for high-concurrency scenarios
+| See link:lambdas/group-events/README.adoc[group-events docs]
+
+| link:lambdas/sqs-ingest/README.adoc[sqs-ingest]
+| Ingests JSON data from SQS into Delta Lake tables
+| See link:lambdas/sqs-ingest/README.adoc[sqs-ingest docs]
+
+| link:lambdas/webhook/README.adoc[webhook]
+| Receives JSONL webhook payloads and writes to Delta Lake tables
+| See link:lambdas/webhook/README.adoc[webhook docs]
+
+| link:lambdas/parquet-concat/README.adoc[parquet-concat]
+| Concatenates multiple Parquet files to optimize oxbow ingestion
+| See link:lambdas/parquet-concat/README.adoc[parquet-concat docs]
+
+| link:lambdas/cdf-to-csv/README.adoc[cdf-to-csv]
+| Converts Delta Lake change data feed to CSV format
+| See link:lambdas/cdf-to-csv/README.adoc[cdf-to-csv docs]
+
+| link:lambdas/glue-create/README.adoc[glue-create]
+| Creates AWS Glue table entries for new Delta Lake tables
+| See link:lambdas/glue-create/README.adoc[glue-create docs]
+
+| link:lambdas/glue-sync/README.adoc[glue-sync]
+| Syncs AWS Glue Data Catalog schemas with Delta Lake table schemas
+| See link:lambdas/glue-sync/README.adoc[glue-sync docs]
+
+|===
+
+==== Deployment
+
 The `deployment/` directory contains the necessary Terraform to provision the
 function, a DynamoDB table for locking, S3 bucket, and IAM permissions.
 

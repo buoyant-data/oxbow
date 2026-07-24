@@ -22,3 +22,6 @@ test: ## Run the crate's tests with each set of features
 
 clean: ## Clean up resources from build
 	cargo clean
+
+perf: ## Run performance benchmarks
+	(cd crates/oxbow && make bench)

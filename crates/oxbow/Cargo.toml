@@ -22,3 +22,7 @@ rusoto_credential = { version = "0.47"}
 fs_extra = "=1"
 tempfile = "*"
 tokio = { workspace = true }
+criterion = "0.5"
+rand = "0.8"
+arrow = "58.0"
+parquet = "58.0"

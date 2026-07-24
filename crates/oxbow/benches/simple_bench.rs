@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use oxbow::TableMods;
 
 fn benchmark_table_mods_operations(c: &mut Criterion) {

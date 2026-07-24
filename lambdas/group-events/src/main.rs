@@ -77,12 +77,19 @@ async fn func(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    // Enhanced tracing subscriber configuration for Lambda environment
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
         // disable printing the name of the module in every log line.
         .with_target(false)
         // disabling time is handy because CloudWatch will add the ingestion time.
         .without_time()
+        .with_ansi(false)
+        .json()
+        .flatten_event(true)
         .init();
     info!("Starting events grouping lambda");
     let _ = std::env::var("QUEUE_URL")

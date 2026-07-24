@@ -52,9 +52,15 @@ resource "aws_lambda_function" "group-events" {
 
   environment {
     variables = {
-      RUST_LOG  = "group-events=debug"
+      RUST_LOG  = "debug,group-events=debug,tracing=info"
       QUEUE_URL = aws_sqs_queue.oxbow-advanced-fifo.url
     }
+  }
+
+  # Explicit logging configuration for CloudWatch
+  logging_config {
+    log_group = "/aws/lambda/group-events"
+    log_format = "Text"
   }
 }
 

@@ -6,7 +6,6 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 aws_lambda_events = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

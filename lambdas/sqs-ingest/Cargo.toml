@@ -10,9 +10,7 @@ lambda_runtime = { version = "0.11" }
 oxbow = { path = "../../crates/oxbow" }
 oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 
-anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
-chrono = { workspace = true }
 deltalake = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

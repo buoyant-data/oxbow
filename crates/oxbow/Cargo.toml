@@ -15,14 +15,10 @@ serde_json = "1.0"
 
 dynamodb_lock = "0.6.1"
 futures = "0.3.29"
-rusoto_core = { version = "0.47", default-features = false, features = ["rustls"]}
-rusoto_credential = { version = "0.47"}
 
 [dev-dependencies]
 fs_extra = "=1"
 tempfile = "*"
 tokio = { workspace = true }
 criterion = "0.5"
-rand = "0.8"
-arrow = "58.0"
 parquet = "58.0"

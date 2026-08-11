@@ -64,12 +64,12 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
     if buffer_more {
         while let Some(batch) = consumer.next().await? {
-            records.append(&mut extract_json_from_sqs_direct(batch));
+            records.extend(extract_json_from_sqs_direct(batch));
         }
     }
 
     // Add the messages that actually triggered this function invocation
-    records.append(&mut extract_json_from_records(&event.payload.records));
+    records.extend(extract_json_from_records(&event.payload.records));
 
     if !records.is_empty() {
         let table = oxbow::lock::open_table(&table_uri).await?;
@@ -122,46 +122,52 @@ async fn main() -> Result<(), Error> {
 /// than those received via Lambda triggering.
 ///
 /// This corresponds to the messages consumed from BUFFER_MORE_QUEUE_URL
-fn extract_json_from_sqs_direct(messages: Vec<aws_sdk_sqs::types::Message>) -> Vec<String> {
+fn extract_json_from_sqs_direct(
+    messages: Vec<aws_sdk_sqs::types::Message>,
+) -> Box<dyn Iterator<Item = String>> {
     if inside_sns() {
-        messages
-            .iter()
-            .filter(|m| m.body().is_some())
-            .map(|m| m.body().as_ref().unwrap().to_string())
-            .flat_map(|b| {
-                let value: SNSWrapper =
-                    serde_json::from_str(&b).expect("Failed to deserialize SNS payload as JSON");
-                value.to_vec()
-            })
-            .collect::<Vec<String>>()
+        Box::new(
+            messages
+                .into_iter()
+                .filter(|m| m.body().is_some())
+                .map(|m| m.body().as_ref().unwrap().to_string())
+                .flat_map(move |b| {
+                    let value: SNSWrapper = serde_json::from_str(&b)
+                        .expect("Failed to deserialize SNS payload as JSON");
+                    value.into_iter()
+                }),
+        )
     } else {
-        messages
-            .iter()
-            .filter(|m| m.body().is_some())
-            .map(|m| m.body().as_ref().unwrap().to_string())
-            .collect::<Vec<String>>()
+        Box::new(
+            messages
+                .into_iter()
+                .filter(|m| m.body().is_some())
+                .map(|m| m.body().as_ref().unwrap().to_string()),
+        )
     }
 }
 
 /// Convert the `body` payloads from [SqsMessage] entities into JSONL
 /// which can be passed into the [oxbow::write::append_values] function
-fn extract_json_from_records(records: &[SqsMessage]) -> Vec<String> {
+fn extract_json_from_records(records: &[SqsMessage]) -> Box<dyn Iterator<Item = String> + '_> {
     if inside_sns() {
-        records
-            .iter()
-            .filter(|m| m.body.is_some())
-            .flat_map(|m| {
-                let value: SNSWrapper = serde_json::from_str(m.body.as_ref().unwrap())
-                    .expect("Failed to deserialize SNS payload as JSON");
-                value.to_vec()
-            })
-            .collect::<Vec<String>>()
+        Box::new(
+            records
+                .iter()
+                .filter(|m| m.body.is_some())
+                .flat_map(move |m| {
+                    let value: SNSWrapper = serde_json::from_str(m.body.as_ref().unwrap())
+                        .expect("Failed to deserialize SNS payload as JSON");
+                    value.into_iter()
+                }),
+        )
     } else {
-        records
-            .iter()
-            .filter(|m| m.body.is_some())
-            .map(|m| m.body.as_ref().unwrap().clone())
-            .collect::<Vec<String>>()
+        Box::new(
+            records
+                .iter()
+                .filter(|m| m.body.is_some())
+                .map(|m| m.body.as_ref().unwrap().clone()),
+        )
     }
 }
 
@@ -172,13 +178,12 @@ struct SNSWrapper {
 }
 
 impl SNSWrapper {
-    /// to_vec() will handle converting all the deserialized JSON inside the wrapper back into
+    /// Converts all the deserialized JSON inside the wrapper back into
     /// strings for passing deeper into oxbow
-    fn to_vec(&self) -> Vec<String> {
+    fn into_iter(self) -> impl Iterator<Item = String> {
         self.records
-            .iter()
+            .into_iter()
             .map(|v| serde_json::to_string(&v).expect("Failed to reserialize SNS JSON"))
-            .collect()
     }
 }
 
@@ -200,7 +205,7 @@ mod buffer_more_tests {
     fn test_extract_direct() {
         let message = Message::builder().body("hello").build();
 
-        let res = extract_json_from_sqs_direct(vec![message]);
+        let res: Vec<String> = extract_json_from_sqs_direct(vec![message]).collect();
         assert_eq!(res, vec!["hello".to_string()]);
     }
 
@@ -214,7 +219,7 @@ mod buffer_more_tests {
             std::env::set_var("UNWRAP_SNS_ENVELOPE", "true");
         }
 
-        let res = extract_json_from_sqs_direct(vec![message]);
+        let res: Vec<String> = extract_json_from_sqs_direct(vec![message]).collect();
 
         unsafe {
             std::env::remove_var("UNWRAP_SNS_ENVELOPE");
@@ -242,7 +247,7 @@ mod tests {
             SqsMessage::default(),
         ];
 
-        let values = extract_json_from_records(&messages);
+        let values: Vec<String> = extract_json_from_records(&messages).collect();
         assert_eq!(values.len(), 3);
 
         let expected: Vec<String> = vec![
@@ -271,7 +276,7 @@ mod tests {
             std::env::set_var("UNWRAP_SNS_ENVELOPE", "true");
         }
 
-        let values = extract_json_from_records(&event.records);
+        let values: Vec<String> = extract_json_from_records(&event.records).collect();
 
         unsafe {
             std::env::remove_var("UNWRAP_SNS_ENVELOPE");

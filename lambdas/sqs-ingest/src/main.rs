@@ -12,6 +12,7 @@ use oxbow_sqs::{ConsumerConfig, TimedConsumer};
 
 use std::env;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::task::JoinSet;
 
 /// This is the primary invocation point for the lambda and should do the heavy lifting
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
@@ -64,7 +65,30 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
 
     if buffer_more {
         while let Some(batch) = consumer.next().await? {
-            records.extend(extract_json_from_sqs_direct(batch));
+            // Use parallel processing for larger batches, sequential for small batches
+            // This threshold can be tuned based on performance testing
+            const PARALLEL_THRESHOLD: usize = 50;
+
+            if batch.len() > PARALLEL_THRESHOLD {
+                // Large batch: use parallel processing for better CPU utilization
+                let batch_len = batch.len();
+                debug!(
+                    "Processing batch of {} messages using PARALLEL mode (threshold: {} messages)",
+                    batch_len, PARALLEL_THRESHOLD
+                );
+                let parallel_results = process_messages_parallel(batch).await;
+                debug!("Completed parallel processing of {} messages", batch_len);
+                records.extend(parallel_results);
+            } else {
+                // Small batch: use sequential processing to avoid overhead
+                let batch_len = batch.len();
+                debug!(
+                    "Processing batch of {} messages using SEQUENTIAL mode (below threshold of {} messages)",
+                    batch_len, PARALLEL_THRESHOLD
+                );
+                records.extend(extract_json_from_sqs_direct(batch));
+                debug!("Completed sequential processing of {} messages", batch_len);
+            }
         }
     }
 
@@ -177,8 +201,84 @@ struct SNSWrapper {
     records: Vec<serde_json::Value>,
 }
 
+// Use an optimal batch size for parallel processing
+// Larger batches benefit more from parallelization
+const PARALLEL_BATCH_SIZE: usize = 50;
+
+/// Parallel JSON processing function using Tokio JoinSet
+/// This function processes messages in parallel across multiple CPU cores
+/// for improved throughput on CPU-bound JSON operations
+async fn process_messages_parallel(messages: Vec<aws_sdk_sqs::types::Message>) -> Vec<String> {
+    trace!(
+        "Starting parallel JSON processing of {} messages (batch size: {})",
+        messages.len(),
+        PARALLEL_BATCH_SIZE
+    );
+
+    let mut join_set = JoinSet::new();
+
+    // Split messages into chunks for parallel processing
+    debug!(
+        "Splitting {} messages into {} parallel chunks for CPU-bound JSON processing",
+        messages.len(),
+        messages.chunks(PARALLEL_BATCH_SIZE).count()
+    );
+
+    for chunk in messages.chunks(PARALLEL_BATCH_SIZE) {
+        let chunk = chunk.to_vec();
+        join_set.spawn(async move {
+            let mut result = Vec::new();
+
+            for message in chunk {
+                if let Some(body) = message.body() {
+                    if inside_sns() {
+                        // SNS mode: parse wrapper and extract records
+                        if let Ok(value) = serde_json::from_str::<SNSWrapper>(body) {
+                            let sns_records = value.into_iter().collect::<Vec<String>>();
+                            result.extend(sns_records);
+                        }
+                    } else {
+                        // Direct mode: use body as-is
+                        result.push(body.to_string());
+                    }
+                }
+            }
+
+            result
+        });
+    }
+
+    // Collect results from all parallel tasks
+    trace!("Collecting results from {} parallel tasks", join_set.len());
+
+    let mut results = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        match res {
+            Ok(batch_result) => {
+                let batch_result_len = batch_result.len();
+                results.extend(batch_result);
+                trace!(
+                    "Successfully collected {} records from parallel task",
+                    batch_result_len
+                );
+            }
+            Err(e) => {
+                error!("Parallel task failed: {:?}", e);
+            }
+        }
+    }
+
+    debug!(
+        "Completed parallel JSON processing of {} messages, produced {} records",
+        messages.len(),
+        results.len()
+    );
+
+    results
+}
+
 impl SNSWrapper {
-    /// Converts all the deserialized JSON inside the wrapper back into
+    /// to_vec() will handle converting all the deserialized JSON inside the wrapper back into
     /// strings for passing deeper into oxbow
     fn into_iter(self) -> impl Iterator<Item = String> {
         self.records

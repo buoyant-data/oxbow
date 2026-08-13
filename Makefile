@@ -1,3 +1,4 @@
+# Project Makefile with Terraform support
 include .base.mk
 
 .PHONY: all build build-release check test clean deploy
@@ -25,3 +26,52 @@ clean: ## Clean up resources from build
 
 perf: ## Run performance benchmarks
 	(cd crates/oxbow && make bench)
+
+# Terraform targets
+.PHONY: terraform-init
+terraform-init:
+	@echo "=== Initializing Terraform ==="
+	@make -C terraform init
+
+.PHONY: terraform-validate
+terraform-validate:
+	@echo "=== Validating Terraform ==="
+	@make -C terraform validate
+
+.PHONY: terraform-test
+terraform-test:
+	@echo "=== Testing Terraform modules ==="
+	@make -C terraform test
+
+.PHONY: terraform-clean
+terraform-clean:
+	@echo "=== Cleaning Terraform ==="
+	@make -C terraform clean
+
+.PHONY: terraform-deploy-simple
+tf-deploy-simple:
+	@echo "=== Deploying oxbow-simple ==="
+	@make -C terraform deploy-simple
+
+.PHONY: terraform-destroy-simple
+tf-destroy-simple:
+	@echo "=== Destroying oxbow-simple ==="
+	@make -C terraform destroy-simple
+
+.PHONY: terraform-full-test
+tf-full-test:
+	@echo "=== Running full Terraform test ==="
+	@make -C terraform full-test
+
+.PHONY: terraform-all
+terraform-all: terraform-init terraform-validate terraform-test
+
+.PHONY: terraform-full-test
+tf-full-test:
+	@echo "=== Running full Terraform test ==="
+	@make -C terraform full-test
+
+.PHONY: build-deploy-test
+build-deploy-test:
+	@echo "=== Building lambdas and testing Terraform ==="
+	@make build-release && make terraform-all

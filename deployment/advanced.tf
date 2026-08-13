@@ -59,7 +59,7 @@ resource "aws_lambda_function" "group-events" {
 
   # Explicit logging configuration for CloudWatch
   logging_config {
-    log_group = "/aws/lambda/group-events"
+    log_group  = "/aws/lambda/group-events"
     log_format = "Text"
   }
 }

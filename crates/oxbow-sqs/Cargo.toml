@@ -26,3 +26,8 @@ stats_alloc = "0.1.10"
 
 [dev-dependencies]
 serial_test = "3"
+criterion = "0.5"
+
+[[bench]]
+name = "memory_benchmark"
+harness = false

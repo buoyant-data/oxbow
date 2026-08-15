@@ -6,23 +6,23 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-bytes = "*"
-lambda_runtime = { version = "0.11" }
+bytes = { workspace = true }
+lambda_runtime = { workspace = true }
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true }
 deltalake = { workspace = true }
-parquet = { version = "58", features = ["async" , "object_store"]}
+parquet = { workspace = true }
 tokio = { workspace = true }
-tokio-stream = { version = "0.1.17" }
-aws-config = "1.5.10"
-aws-sdk-s3 = "1.60.0"
+tokio-stream = { workspace = true }
 stats_alloc = "0.1"
 tracing-subscriber = { workspace = true }
-uuid = { version = "1.6.1", features = ["v4"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.8"

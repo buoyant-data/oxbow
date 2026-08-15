@@ -11,6 +11,7 @@ use lambda_runtime::tracing::{debug, error, info, trace};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 
+use aws_config;
 use oxbow_lambda_shared::*;
 use oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use tokio::io::AsyncBufReadExt;

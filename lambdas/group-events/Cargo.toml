@@ -18,8 +18,8 @@ url = { workspace = true }
 oxbow = { path = "../../crates/oxbow" }
 oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
-aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
-aws-sdk-sqs = "1.1.0"
-lambda_runtime = { version = "0.8" }
+aws-config = { workspace = true, features = ["behavior-version-latest"] }
+aws-sdk-sqs = { workspace = true }
+lambda_runtime = { workspace = true }
 md5 = "=0.7.0"
-uuid = { version = "1.6.1", features = ["v4"] }
+uuid = { workspace = true }

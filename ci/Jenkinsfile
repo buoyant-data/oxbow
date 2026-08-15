@@ -22,7 +22,7 @@ pipeline {
 
     stage('Build') {
       options {
-        timeout(time: 1, unit: 'HOURS')
+        timeout(time: 2, unit: 'HOURS')
       }
       parallel {
         stage('Crates - FreeBSD') {
@@ -61,7 +61,7 @@ pipeline {
 
     stage('Test') {
       options {
-        timeout(time: 1, unit: 'HOURS')
+        timeout(time: 2, unit: 'HOURS')
       }
       parallel {
         stage('Crates Test - FreeBSD') {

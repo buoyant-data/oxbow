@@ -1,6 +1,13 @@
-///
-/// oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas
-///
+//! # Oxbow Lambda Shared Utilities
+//!
+//! oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas.
+//! This crate provides essential functions for processing S3 events, extracting Delta Lake table
+//! information, and handling various AWS event patterns.
+//!
+//! The shared utilities include:
+//! - S3 event processing with SNS envelope unwrapping
+//! - URL-encoded S3 object key handling  
+//! - Delta Lake table grouping and mechanism handling
 use aws_lambda_events::s3::{S3Event, S3EventRecord, S3Object};
 use aws_lambda_events::sns::SnsMessage;
 use aws_lambda_events::sqs::SqsEvent;
@@ -254,9 +261,9 @@ pub fn extract_records_from(
     Ok(records_with_url_decoded_keys(&records))
 }
 
-/// Convert an [oxbow_sqs::Message] into an [SqsMessage]
+/// Convert an [oxbow_sqs::Message] into an [aws_lambda_events::sqs::SqsMessage]
 ///
-/// The [SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
+/// The [aws_lambda_events::sqs::SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
 /// from Lambda triggers and the other directly from SQS.
 pub fn convert_from_sqs(message: oxbow_sqs::Message) -> aws_lambda_events::sqs::SqsMessage {
     aws_lambda_events::sqs::SqsMessage {

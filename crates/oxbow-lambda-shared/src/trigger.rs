@@ -15,6 +15,19 @@ static DV: OnceLock<Regex> = OnceLock::new();
 
 /// A [TableTrigger] is a struct which contains details about a [Delta](https://delta.io) table
 /// which has had a file change inside of it, triggering the Lambda function in some way.
+///
+/// # Examples
+///
+/// Create a trigger for a transaction log:
+///
+/// ```
+/// use oxbow_lambda_shared::TableTrigger;
+/// use url::Url;
+///
+/// let location = Url::parse("s3://my-bucket/my-delta/_delta_log/00000000000000000001.json").unwrap();
+/// let trigger = TableTrigger::new(location.clone());
+/// assert_eq!(trigger.location().as_str(), location.as_str());
+/// ```
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TableTrigger {
     // [Url] which points to the **root** of the Delta table, i.e. the prefix above `_delta_log/`
@@ -29,7 +42,7 @@ impl TableTrigger {
     }
 
     /// Create an empty [TableTrigger] for the given table location [Url]
-    fn new(location: Url) -> Self {
+    pub fn new(location: Url) -> Self {
         Self {
             location,
             changes: vec![],
@@ -151,6 +164,19 @@ pub enum Modification {
 }
 
 impl From<&str> for Modification {
+    /// Convert S3 event name string into a Modification enum
+    ///
+    /// # Examples
+    ///
+    /// Various S3 event types:
+    ///
+    /// ```
+    /// use oxbow_lambda_shared::Modification;
+    /// assert_eq!(Modification::Create, "ObjectCreated:Put".into());
+    /// assert_eq!(Modification::Create, "ObjectCreated:Copy".into());
+    /// assert_eq!(Modification::Delete, "ObjectRemoved:Delete".into());
+    /// assert_eq!(Modification::Unknown, "RandomEventName".into());
+    /// ```
     fn from(name: &str) -> Self {
         if name.starts_with("ObjectCreated") {
             return Modification::Create;
@@ -176,7 +202,42 @@ pub enum ChangeType {
 }
 
 impl ChangeType {
-    fn from_key(path_thing: &str) -> (Self, String) {
+    /// Determine the type of change from an S3 object key
+    ///
+    /// # Examples
+    ///
+    /// Detect transaction logs:
+    ///
+    /// ```
+    /// use oxbow_lambda_shared::ChangeType;
+    /// let (kind, _) = ChangeType::from_key("mytable/_delta_log/00000000000000000001.json");
+    /// if let ChangeType::TransactionLog { version } = kind { assert_eq!(version, 1); }
+    /// ```
+    ///
+    /// Detect parquet files:
+    ///
+    /// ```
+    /// use oxbow_lambda_shared::ChangeType;
+    /// let (kind, _) = ChangeType::from_key("mytable/part-00000-abc123.c000.snappy.parquet");
+    /// assert!(matches!(kind, ChangeType::DataFile));
+    /// ```
+    ///
+    /// Detect change data feed (CDC):
+    ///
+    /// ```
+    /// use oxbow_lambda_shared::ChangeType;
+    /// let (kind, _) = ChangeType::from_key("mytable/_change_data/cdc-0000-abc123.c000.snappy.parquet");
+    /// assert!(matches!(kind, ChangeType::ChangeDataFeed));
+    /// ```
+    ///
+    /// Detect deletion vectors:
+    ///
+    /// ```
+    /// use oxbow_lambda_shared::ChangeType;
+    /// let (kind, _) = ChangeType::from_key("mytable/deletion_vector-abc123.bin");
+    /// assert!(matches!(kind, ChangeType::DeletionVector));
+    /// ```
+    pub fn from_key(path_thing: &str) -> (Self, String) {
         let txn_matcher = TXN_LOG.get_or_init(|| {
             Regex::new(r"(?P<root>.*)/_delta_log/(?P<v>\d{20})\.json$")
                 .expect("Failed to compile transaction log matcher")

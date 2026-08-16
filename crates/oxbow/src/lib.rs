@@ -15,7 +15,7 @@ use deltalake::protocol::*;
 use deltalake::{DeltaResult, DeltaTable, DeltaTableError, ObjectMeta, ObjectStore};
 use deltalake::{Path, kernel::*};
 use futures::StreamExt;
-use parquet::file::statistics::Statistics;
+
 use tracing::log::*;
 use url::Url;
 
@@ -30,6 +30,18 @@ pub mod write;
 ///
 /// Typically this struct is populated by S3 events which would indicate a file(s) has been added
 /// or removed.
+///
+/// # Examples
+///
+/// ```rust
+/// use oxbow::TableMods;
+/// use std::collections::HashMap;
+///
+/// // Create a new TableMods instance using default method
+/// let mut mods = TableMods::default();
+/// assert_eq!(0, mods.adds().len());
+/// assert_eq!(0, mods.removes().len());
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct TableMods {
     adds: HashMap<deltalake::Path, ObjectMeta>,
@@ -48,6 +60,30 @@ impl TableMods {
         self.adds.values().collect()
     }
 
+    /// Add a file to be tracked in the TableMods collection
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use oxbow::TableMods;
+    /// use deltalake::ObjectMeta;
+    ///
+    /// let mut mods = TableMods::default();
+    /// let meta = ObjectMeta {
+    ///     location: deltalake::Path::from("s3://bucket/../part-00000.parquet"),
+    ///     size: 1024,
+    ///     last_modified: Default::default(),
+    ///     e_tag: None,
+    ///     version: None,
+    /// };
+    /// let added = mods.add(meta.clone());
+    /// assert!(added);
+    /// assert_eq!(mods.adds().len(), 1);
+    /// // Adding the same file again returns false (no duplicates)
+    /// let added_again = mods.add(meta);
+    /// assert!(!added_again);
+    /// assert_eq!(mods.adds().len(), 1); // Still only 1 file
+    /// ```
     pub fn add(&mut self, add: ObjectMeta) -> bool {
         if self.adds.contains_key(&add.location) {
             return false;
@@ -60,6 +96,26 @@ impl TableMods {
         self.removes.values().collect()
     }
 
+    /// Remove a file from tracking in the TableMods collection
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use oxbow::TableMods;
+    /// use deltalake::ObjectMeta;
+    ///
+    /// let mut mods = TableMods::default();
+    /// let meta = ObjectMeta {
+    ///     location: deltalake::Path::from("s3://bucket/to-remove.parquet"),
+    ///     size: 1024,
+    ///     last_modified: Default::default(),
+    ///     e_tag: None,
+    ///     version: None,
+    /// };
+    /// let removed = mods.remove(meta.clone());
+    /// assert!(removed);
+    /// assert_eq!(mods.removes().len(), 1);
+    /// ```
     pub fn remove(&mut self, remove: ObjectMeta) -> bool {
         if self.removes.contains_key(&remove.location) {
             return false;

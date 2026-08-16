@@ -20,17 +20,16 @@ use url::Url;
 use std::alloc::System;
 use std::time::{Duration, Instant};
 
-// How can I handle this:
-//
-// Perhaps I can create a function handler and just invoke the function handler with a constructed
-// sqsevent for each one of the sqsevents that are retrieved in the buffer_more_messages?
-//
-// How can an application signal that it needs to be done?
-//
-// file loader needs to signal off of memory
-// sqs-ingest probably needs to fgo off of time
-
 /// Configuration for consuming messages from SQS
+///
+/// # Examples
+///
+/// Create a configuration using defaults from environment variables:
+///
+/// ```rust,no_run
+/// use oxbow_sqs::ConsumerConfig;
+/// let cfg = ConsumerConfig::default(); // Will panic if BUFFER_MORE_QUEUE_URL env variable is missing
+/// ```
 #[derive(Clone, Debug)]
 pub struct ConsumerConfig {
     pub queue: Url,
@@ -53,6 +52,29 @@ impl Default for ConsumerConfig {
 
 /// A [TimedConsumer] helps consume from Amazon SQS up until a certain threshold of time, typically
 /// used to stop consuming messages at a certain amount of the Lambda's runtime
+///
+/// # Examples
+///
+/// Set up a consumer with a custom deadline:
+///
+/// ```no_run
+/// use oxbow_sqs::{TimedConsumer, ConsumerConfig};
+/// use aws_config::SdkConfig;
+/// use std::time::Duration;
+///
+/// # async {
+/// let sdk = aws_config::from_env().load().await;
+/// let cfg = ConsumerConfig {
+///     queue: url::Url::parse("https://sqs.us-east-1.amazonaws.com/123456/test").unwrap(),
+///     retrieval_max: 5,
+/// };
+/// let mut consumer = TimedConsumer::new(cfg, &sdk, Duration::from_secs(30));
+/// while let Ok(Some(messages)) = consumer.next().await {
+///     // process messages
+///     println!("Received {} messages", messages.len());
+/// }
+/// # };
+/// ```
 #[derive(Debug)]
 pub struct TimedConsumer<'a> {
     config: ConsumerConfig,

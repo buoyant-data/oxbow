@@ -1,0 +1,27 @@
+# Cargo configuration for optimized builds
+[build]
+target-dir = "target"
+rustflags = ["-C", "debug-assertions=off"]
+incremental = true
+
+[profile.dev]
+codegen-units = 16
+opt-level = 0
+overflow-checks = true
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true
+
+# Use thin LTO for faster builds than full LTO
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 8
+
+# Enable more parallel compilation
+[alias]
+check-all = "check --all-targets"
+build-release = "build --release"

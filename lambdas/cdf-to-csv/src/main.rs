@@ -219,7 +219,7 @@ fn escape_dataframe(input: DataFrame) -> DeltaResult<DataFrame> {
         }
         if field.data_type() == &DataType::Boolean && std::env::var("CSV_BOOL_AS_INT").is_ok() {
             if std::env::var("CSV_BOOL_NULL_AS_INT").is_ok() {
-                df = df.fill_null(ScalarValue::from(0), [field.name().clone()].to_vec())?;
+                df = df.fill_null(&ScalarValue::from(0), &[field.name().as_str()])?;
             }
             df = df.with_column(field.name(), cast(col(field.name()), DataType::Int32))?;
         }
@@ -512,7 +512,7 @@ mod tests {
         );
         assert_eq!(
             lines[3].as_ref().expect("Failure"),
-            r#""","209","149",":-\\","1.0""#,
+            r#""209","149",":-\\","1.0","""#,
             "The CSV output was not what we expected"
         );
 

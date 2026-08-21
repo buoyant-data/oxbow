@@ -21,4 +21,4 @@ fs_extra = "=1"
 tempfile = "*"
 tokio = { workspace = true }
 criterion = "0.5"
-parquet = "58.0"
+parquet = { workspace = true }

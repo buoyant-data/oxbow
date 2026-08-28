@@ -3,6 +3,7 @@
 //! produce CSV files to ingest into Aurora for Change Data Feeds
 
 use aws_lambda_events::event::sqs::SqsEvent;
+use deltalake::DeltaResult;
 use deltalake::arrow::datatypes::Schema;
 use deltalake::datafusion::common::parsers::CsvQuoteStyle;
 use deltalake::datafusion::config::CsvOptions;
@@ -14,7 +15,6 @@ use deltalake::logstore::object_store::aws::AmazonS3Builder;
 use deltalake::logstore::object_store::path::Path;
 use deltalake::logstore::object_store::prefix::PrefixStore;
 use deltalake::logstore::object_store::{ObjectStore, ObjectStoreExt as _};
-use deltalake::{DeltaOps, DeltaResult};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use oxbow_lambda_shared::*;
 use serde::{Deserialize, Serialize};
@@ -88,8 +88,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> DeltaResult<(), Error
             }
 
             // Always look at the last version
-            let cdf = DeltaOps::from(table)
-                .load_cdf()
+            let cdf = table
+                .scan_cdf()
                 .with_starting_version(min)
                 .with_ending_version(max);
             let provider = DeltaCdfTableProvider::try_new(cdf)?;
@@ -261,7 +261,7 @@ mod tests {
             Url::from_file_path(canonical).expect("Failed to find the Url for the CDF table"),
         )
         .await?;
-        let cdf = DeltaOps::from(table).load_cdf().with_starting_version(3);
+        let cdf = table.scan_cdf().with_starting_version(3);
         let ctx = SessionContext::new();
         Ok((ctx, cdf))
     }

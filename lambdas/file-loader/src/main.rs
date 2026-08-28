@@ -245,7 +245,7 @@ mod tests {
         let buf = tokio::fs::File::open("../../tests/data/bigger-than-a-batch.jsonl").await?;
         let reader = tokio::io::BufReader::new(buf);
 
-        let mut table = deltalake::operations::DeltaOps::new_in_memory()
+        let mut table = deltalake::table::DeltaTable::new_in_memory()
             .create()
             .with_column(
                 "startdate",

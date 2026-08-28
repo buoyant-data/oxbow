@@ -130,7 +130,7 @@ mod tests {
     use deltalake::*;
 
     async fn setup_test_table() -> DeltaResult<DeltaTable> {
-        DeltaOps::new_in_memory()
+        DeltaTable::new_in_memory()
             .create()
             .with_table_name("test")
             .with_column("id", DataType::INTEGER, true, None)
@@ -144,7 +144,7 @@ mod tests {
         use std::fs::File;
         use std::io::BufReader;
 
-        let table = DeltaOps::new_in_memory()
+        let table = DeltaTable::new_in_memory()
             .create()
             .with_table_name("test")
             .with_column("current", DataType::BOOLEAN, true, None)

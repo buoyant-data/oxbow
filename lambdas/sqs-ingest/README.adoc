@@ -57,4 +57,8 @@ image::diagram.png[Flow]
 | _null_
 | Should only be set if messages are first passing through SNS -> SQS. Ensure "raw delivery" is enabled on the topic subscription!
 
+| `CREATE_CHECKPOINT`
+| _null_ (enabled)
+| When set to `false` (case-insensitive) checkpointing is disabled. By default a checkpoint is written to `_delta_log/` after every N commits where N is the table's `delta.checkpointInterval` property (default 100). Disable when checkpoint overhead is undesirable (e.g. high-frequency micro-batch writes) and checkpointing is managed externally.
+
 |===

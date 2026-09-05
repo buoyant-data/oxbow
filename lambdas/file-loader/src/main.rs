@@ -66,7 +66,8 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let mut table = oxbow::lock::open_table(&table_uri)
         .await
         .expect("Failed to open the Delta table!");
-    let mut writer = RecordBatchWriter::for_table(&table)?;
+    let mut writer = RecordBatchWriter::for_table(&table)?
+        .with_commit_properties(oxbow::default_commit_properties());
     let schema = writer.arrow_schema();
     info!("Schema for destination table: {schema:?}");
 

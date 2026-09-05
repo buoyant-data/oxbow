@@ -262,13 +262,30 @@ pub async fn create_table_with(
         .await
 }
 
+/// Return whether checkpoint creation is enabled, controlled by the `CREATE_CHECKPOINT`
+/// environment variable.
+///
+/// Checkpointing is **enabled by default**. Set `CREATE_CHECKPOINT=false` in the environment to
+/// disable it.  Any other value (or the variable being unset) leaves checkpointing on.
+///
+/// When enabled, delta-rs will write a checkpoint file to `_delta_log/` after every N commits
+/// where N is the table's `delta.checkpointInterval` property (default 10).
+pub fn create_checkpoint_enabled() -> bool {
+    std::env::var("CREATE_CHECKPOINT")
+        .map(|v| !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true)
+}
+
 /// Return the common default [CommitProperties] to be used by issuing commits in oxbow
-pub(crate) fn default_commit_properties() -> CommitProperties {
+pub fn default_commit_properties() -> CommitProperties {
     CommitProperties::default()
         // Turn off cleanup of expired logs. After each commit, versions are
         // scanned (ListObject on s3) to clean up expired entries. This creates
         // significant overhead when there are many versions on each commit.
         .with_cleanup_expired_logs(Some(false))
+        // Respect the CREATE_CHECKPOINT environment variable so operators can opt
+        // in or out of checkpoint creation without a code change.
+        .with_create_checkpoint(create_checkpoint_enabled())
 }
 
 /// Commit the given [Action]s to the [DeltaTable]
@@ -1517,5 +1534,65 @@ mod tests {
             !formatted.contains("Timestamp(Nanosecond"),
             "Expected to not find a Timestamp(Nanosecond) in the coerced schema, got: {formatted}"
         );
+    }
+}
+#[cfg(test)]
+mod checkpoint_env_tests {
+    /// Tests for `create_checkpoint_enabled` and `default_commit_properties`.
+    ///
+    /// `#[serial]` serialises all tests in this module so env-var mutations
+    /// don't race with each other across the parallel test pool.
+    use serial_test::serial;
+
+    use super::{create_checkpoint_enabled, default_commit_properties};
+
+    #[test]
+    #[serial]
+    fn create_checkpoint_enabled_default() {
+        unsafe { std::env::remove_var("CREATE_CHECKPOINT") };
+        assert!(create_checkpoint_enabled());
+    }
+
+    #[test]
+    #[serial]
+    fn create_checkpoint_enabled_false_lowercase() {
+        unsafe { std::env::set_var("CREATE_CHECKPOINT", "false") };
+        assert!(!create_checkpoint_enabled());
+        unsafe { std::env::remove_var("CREATE_CHECKPOINT") };
+    }
+
+    #[test]
+    #[serial]
+    fn create_checkpoint_enabled_false_uppercase() {
+        unsafe { std::env::set_var("CREATE_CHECKPOINT", "FALSE") };
+        assert!(!create_checkpoint_enabled());
+        unsafe { std::env::remove_var("CREATE_CHECKPOINT") };
+    }
+
+    #[test]
+    #[serial]
+    fn create_checkpoint_enabled_true_explicit() {
+        unsafe { std::env::set_var("CREATE_CHECKPOINT", "true") };
+        assert!(create_checkpoint_enabled());
+        unsafe { std::env::remove_var("CREATE_CHECKPOINT") };
+    }
+
+    #[test]
+    #[serial]
+    fn create_checkpoint_enabled_arbitrary_value() {
+        // Any value that is not literally "false" is treated as enabled.
+        unsafe { std::env::set_var("CREATE_CHECKPOINT", "yes") };
+        assert!(create_checkpoint_enabled());
+        unsafe { std::env::remove_var("CREATE_CHECKPOINT") };
+    }
+
+    #[test]
+    #[serial]
+    fn default_commit_properties_composes_without_panic() {
+        unsafe { std::env::set_var("CREATE_CHECKPOINT", "false") };
+        let _ = default_commit_properties();
+        unsafe { std::env::remove_var("CREATE_CHECKPOINT") };
+
+        let _ = default_commit_properties();
     }
 }

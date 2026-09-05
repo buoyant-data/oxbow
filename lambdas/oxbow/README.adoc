@@ -27,15 +27,19 @@ toc::[]
 | _null_
 | Should only be used if S3 Event Notifications are first going to SNS and then routing to SQS for Oxbow
 
-|| `SCHEMA_EVOLUTION`
-|| _null_
-|| When set to any value this enables schema evolution by the Oxbow Lambda which will cause it to retrieve metadata for the last `.parquet` it reteives in an event notification and add new columns if necessary
+| `SCHEMA_EVOLUTION`
+| _null_
+| When set to any value this enables schema evolution by the Oxbow Lambda which will cause it to retrieve metadata for the last `.parquet` it reteives in an event notification and add new columns if necessary
 
-|| `WITH_STATS`
-|| _null_ or `false`
-|| When set to `true` this enables inclusion of file statistics in Oxbow appends. This will include parquet file statistics in the Delta Lake table actions when adding new files.
+| `WITH_STATS`
+| _null_ or `false`
+| When set to `true` this enables inclusion of file statistics in Oxbow appends. This will include parquet file statistics in the Delta Lake table actions when adding new files.
 
-|| `DYNAMO_LOCK_TABLE_NAME`
+| `CREATE_CHECKPOINT`
+| _null_ (enabled)
+| When set to `false` (case-insensitive) checkpointing is disabled. By default a checkpoint is written to `_delta_log/` after every N commits where N is the table's `delta.checkpointInterval` property (default 100). Disable when checkpoint overhead is undesirable (e.g. high-frequency micro-batch writes) and checkpointing is managed externally.
+
+| `DYNAMO_LOCK_TABLE_NAME`
 | `delta_rs_lock_table`
 | The DynamoDB table used for locking on table creation. This allows Lambda concurrency for new prefixes which should create a Delta table.
 

@@ -22,3 +22,4 @@ tempfile = "*"
 tokio = { workspace = true }
 criterion = "0.5"
 parquet = { workspace = true }
+serial_test = "3"

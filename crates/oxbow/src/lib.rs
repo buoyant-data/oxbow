@@ -1387,6 +1387,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_commit_with_checkpoint() {
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+        let files = discover_parquet_files(store.object_store(None).clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+        // Creating the table with one of the discovered files, so the remaining three should be
+        // added later
+        let mut table = create_table_with(&[files[0].clone()], store.clone())
+            .await
+            .expect("Failed to create table");
+        let initial_version = table.version().unwrap();
+        assert_eq!(0, initial_version);
+
+        for i in 0..=100 {
+            let mods = TableMods::new(&files, &[files[0].clone()]);
+            let actions = actions_for(&mods, &table, false)
+                .await
+                .expect("Failed to curate actions");
+            let _ = commit_to_table(&actions, &table).await.unwrap();
+            table.load().await.expect("Failed to reload table");
+        }
+        assert_eq!(Some(101), table.version());
+        let last = table
+            .object_store()
+            .head(&deltalake::Path::from("_delta_log/_last_checkpoint"))
+            .await
+            .expect("Failed to find _last_checkpoint");
+        assert_ne!(last.size, 0, "The _last_checkpoint was empty");
+
+        assert_eq!(
+            table.get_file_uris().unwrap().collect::<Vec<_>>().len(),
+            3,
+            "Expected to only find three files on the table at this state"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_commit_with_checkpoint_disabled() {
+        unsafe {
+            std::env::set_var("CREATE_CHECKPOINT", "false");
+        }
+        let (_tempdir, store) =
+            util::create_temp_path_with("../../tests/data/hive/deltatbl-partitioned");
+        let files = discover_parquet_files(store.object_store(None).clone())
+            .await
+            .expect("Failed to discover parquet files");
+        assert_eq!(files.len(), 4, "No files discovered");
+        // Creating the table with one of the discovered files, so the remaining three should be
+        // added later
+        let mut table = create_table_with(&[files[0].clone()], store.clone())
+            .await
+            .expect("Failed to create table");
+        let initial_version = table.version().unwrap();
+        assert_eq!(0, initial_version);
+
+        for i in 0..=100 {
+            let mods = TableMods::new(&files, &[files[0].clone()]);
+            let actions = actions_for(&mods, &table, false)
+                .await
+                .expect("Failed to curate actions");
+            let _ = commit_to_table(&actions, &table).await.unwrap();
+            table.load().await.expect("Failed to reload table");
+        }
+        assert_eq!(Some(101), table.version());
+        let last = table
+            .object_store()
+            .head(&deltalake::Path::from("_delta_log/_last_checkpoint"))
+            .await;
+        assert!(
+            last.is_err(),
+            "A checkpoint was created despite CREATE_CHECKPOINT being false"
+        );
+        unsafe {
+            std::env::remove_var("CREATE_CHECKPOINT");
+        }
+    }
+
+    #[tokio::test]
     async fn test_schema_evolution() {
         use deltalake::operations::create::CreateBuilder;
 

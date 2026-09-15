@@ -1402,7 +1402,7 @@ mod tests {
         let initial_version = table.version().unwrap();
         assert_eq!(0, initial_version);
 
-        for i in 0..=100 {
+        for _ in 0..=100 {
             let mods = TableMods::new(&files, &[files[0].clone()]);
             let actions = actions_for(&mods, &table, false)
                 .await
@@ -1444,7 +1444,7 @@ mod tests {
         let initial_version = table.version().unwrap();
         assert_eq!(0, initial_version);
 
-        for i in 0..=100 {
+        for _ in 0..=100 {
             let mods = TableMods::new(&files, &[files[0].clone()]);
             let actions = actions_for(&mods, &table, false)
                 .await

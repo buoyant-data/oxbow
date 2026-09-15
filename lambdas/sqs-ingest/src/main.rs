@@ -27,6 +27,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     // Hold onto the instant that the function started in order to attempt to exit on time.
     let fn_start = Instant::now();
     trace!("payload received: {:?}", event.payload.records);
+    let table = oxbow::lock::open_table(&table_uri).await?;
 
     let config = aws_config::from_env().load().await;
     // Millis to allow for consuming more messages
@@ -53,6 +54,18 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
                 .expect("Failed to compute a 64-bit deadline"),
         ),
     );
+
+    // When the version is approaching a multiple of 100 then there is a checkpoint looming, and
+    // buffering more messages can put undue memory pressure on the lambda. By skipping buffering
+    // the Lambda should save memory needed for the checkpoint process.
+    if let Some(version) = table.version()
+        && (version % 99 == 1)
+    {
+        limit = None;
+        info!(
+            "The table version is {version} and a checkpoint is imminent, skipping any attempts to buffer more messages"
+        );
+    }
     consumer.limit = limit;
 
     debug!(
@@ -96,8 +109,6 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     records.extend(extract_json_from_records(&event.payload.records));
 
     if !records.is_empty() {
-        let table = oxbow::lock::open_table(&table_uri).await?;
-
         match append_values(table, records.as_slice()).await {
             Ok(table) => {
                 debug!("Appended {} values to: {table:?}", records.len());

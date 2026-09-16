@@ -15,7 +15,6 @@ use std::collections::HashMap;
 pub async fn open_table(table_uri: &str) -> deltalake::DeltaResult<deltalake::DeltaTable> {
     let table_url = Url::parse(table_uri).expect("Fatal error trying to parse a table URL");
     DeltaTableBuilder::from_url(table_url)?
-        .without_files()
         .with_storage_options(storage_options(table_uri))
         .load()
         .await

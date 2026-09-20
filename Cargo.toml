@@ -27,7 +27,7 @@ aws-sdk-sqs = "1.109.0"
 aws_lambda_events = { version = "0.15", default-features = false, features = ["sns", "sqs", "s3"] }
 chrono = "0.4"
 # datafusion 55 support
-deltalake = { git = "https://github.com/rtyler/delta-rs", rev = "748f045de2ba91a5293b7c89cc4158a66cb31bfb", features = ["s3", "json", "datafusion"] }
+deltalake = { git = "https://github.com/delta-io/delta-rs", rev = "90b904ede68627c2450007034d9724c043f1a66b", features = ["s3", "json", "datafusion"] }
 #deltalake = { version = "0.32.0", features = ["s3", "json", "datafusion"] }
 #deltalake = { path = "../../delta-io/delta-rs/crates/deltalake", features = ["s3", "json", "datafusion"]}
 futures = "0.3"

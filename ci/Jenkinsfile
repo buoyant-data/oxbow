@@ -88,6 +88,11 @@ pipeline {
           }
         }
       }
+      post {
+        success {
+          junit testResults: 'target/nextest/ci/junit.xml', allowEmptyResults: false
+        }
+      }
     }
 
     stage('Release') {

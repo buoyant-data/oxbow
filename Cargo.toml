@@ -45,13 +45,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 url = { version = "2.3", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 
-#[patch.crates-io]
-#datafusion = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
-#datafusion-datasource = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
-#datafusion-physical-expr-adapter = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
-#datafusion-ffi = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
-#datafusion-proto = { git = "https://github.com/buoyant-data/datafusion", branch = "buoyant/release-53.0.x" }
-
 [profile.release]
 panic = "abort"
 lto = true
@@ -65,3 +58,8 @@ opt-level = "z"
 inherits = "release"
 lto = "thin"
 
+[profile.ci]
+inherits = "dev"
+# Line tables for workspace crates only, so panic backtraces have file and
+# line numbers without the cost of debuginfo for all dependencies.
+debug = "line-tables-only"

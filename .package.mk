@@ -4,7 +4,7 @@
 #
 
 build: ## Build the package
-	cargo build
+	cargo build --profile ci
 
 test: ## Run the tests
-	cargo nextest r
+	cargo nextest r --profile ci

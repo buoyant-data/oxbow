@@ -212,7 +212,9 @@ async fn deserialize_bytes(
             match decoder.flush()? {
                 Some(batch) => {
                     debug!("Writing a batch with {} rows", batch.num_rows());
-                    writer.write(buoyant_oxbow::write::augment_with_ds(batch)?).await?;
+                    writer
+                        .write(buoyant_oxbow::write::augment_with_ds(batch)?)
+                        .await?;
                     batches += 1;
                 }
                 // No more batches, exit!
@@ -357,7 +359,9 @@ mod tests {
     fn test_sqs_event_compat() {
         let buf = std::fs::read_to_string("../../tests/data/s3-event-tables.json")
             .expect("Failed to read file");
-        let message = buoyant_oxbow_sqs::Message::builder().body(buf.clone()).build();
+        let message = buoyant_oxbow_sqs::Message::builder()
+            .body(buf.clone())
+            .build();
 
         let converted: SqsMessage = convert_from_sqs(message);
         assert_eq!(Some(buf), converted.body);

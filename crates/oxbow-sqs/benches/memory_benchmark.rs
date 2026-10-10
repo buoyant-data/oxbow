@@ -5,8 +5,8 @@
 //! - Memory allocation patterns during message processing
 //! - Performance characteristics with varying batch sizes
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use url::Url;

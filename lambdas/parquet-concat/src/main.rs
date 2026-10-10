@@ -272,7 +272,9 @@ mod tests {
     fn test_sqs_event_compat() {
         let buf = std::fs::read_to_string("../../tests/data/s3-event-tables.json")
             .expect("Failed to read file");
-        let message = buoyant_oxbow_sqs::Message::builder().body(buf.clone()).build();
+        let message = buoyant_oxbow_sqs::Message::builder()
+            .body(buf.clone())
+            .build();
 
         let converted: SqsMessage = convert_from_sqs(message);
         assert_eq!(Some(buf), converted.body);

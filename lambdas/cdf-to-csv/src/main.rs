@@ -3,6 +3,7 @@
 //! produce CSV files to ingest into Aurora for Change Data Feeds
 
 use aws_lambda_events::event::sqs::SqsEvent;
+use buoyant_oxbow_lambda_shared::*;
 use deltalake::DeltaResult;
 use deltalake::arrow::datatypes::Schema;
 use deltalake::datafusion::common::parsers::CsvQuoteStyle;
@@ -16,7 +17,6 @@ use deltalake::logstore::object_store::path::Path;
 use deltalake::logstore::object_store::prefix::PrefixStore;
 use deltalake::logstore::object_store::{ObjectStore, ObjectStoreExt as _};
 use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
-use buoyant_oxbow_lambda_shared::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::log::*;

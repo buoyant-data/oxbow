@@ -10,7 +10,7 @@ use serde_json::Value;
 use tracing::log::*;
 use url::Url;
 
-use oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda_shared::*;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -59,17 +59,17 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
         let table_mods = by_table
             .get(table_name)
             .expect("Failed to get the files for a table, impossible!");
-        let lock_client = oxbow::lock::client_for(table_name);
+        let lock_client = buoyant_oxbow::lock::client_for(table_name);
 
-        match oxbow::lock::open_table(table_name).await {
+        match buoyant_oxbow::lock::open_table(table_name).await {
             Ok(table) => {
                 info!("Opened table to append: {:?}", table);
 
-                let actions = oxbow::actions_for(table_mods, &table, can_evolve_schema)
+                let actions = buoyant_oxbow::actions_for(table_mods, &table, can_evolve_schema)
                     .await
                     .expect("Failed to generate actions for the table modifications");
 
-                match oxbow::commit_to_table(&actions, &table).await {
+                match buoyant_oxbow::commit_to_table(&actions, &table).await {
                     Ok(version) => {
                         info!(
                             "Successfully appended version {} to table at {}",
@@ -83,12 +83,12 @@ async fn func<'a>(event: LambdaEvent<SqsEvent>) -> Result<Value, Error> {
                 }
             }
             Err(DeltaTableError::NotATable(_e)) => {
-                let lock = oxbow::lock::acquire(table_name, &lock_client).await;
+                let lock = buoyant_oxbow::lock::acquire(table_name, &lock_client).await;
                 // create the table with our objects
                 info!("Creating new Delta table at: {location}");
-                let options = oxbow::lock::storage_options(table_name);
-                let table = oxbow::convert(&location, Some(options)).await;
-                let _ = oxbow::lock::release(lock, &lock_client).await;
+                let options = buoyant_oxbow::lock::storage_options(table_name);
+                let table = buoyant_oxbow::convert(&location, Some(options)).await;
+                let _ = buoyant_oxbow::lock::release(lock, &lock_client).await;
 
                 // After releasing the lock, unpack the error
                 if table.is_err() {

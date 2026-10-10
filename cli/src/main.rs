@@ -43,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let location = Url::parse(&table_location(&flags)?)?;
     info!("Using the table location of: {:?}", location);
 
-    oxbow::convert(&location, None)
+    buoyant_oxbow::convert(&location, None)
         .await
         .expect("Failed to convert location");
     Ok(())

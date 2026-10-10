@@ -34,7 +34,7 @@ pub mod write;
 /// # Examples
 ///
 /// ```rust
-/// use oxbow::TableMods;
+/// use buoyant_oxbow::TableMods;
 /// use std::collections::HashMap;
 ///
 /// // Create a new TableMods instance using default method
@@ -65,7 +65,7 @@ impl TableMods {
     /// # Examples
     ///
     /// ```
-    /// # use oxbow::TableMods;
+    /// # use buoyant_oxbow::TableMods;
     /// use deltalake::ObjectMeta;
     ///
     /// let mut mods = TableMods::default();
@@ -101,7 +101,7 @@ impl TableMods {
     /// # Examples
     ///
     /// ```
-    /// # use oxbow::TableMods;
+    /// # use buoyant_oxbow::TableMods;
     /// use deltalake::ObjectMeta;
     ///
     /// let mut mods = TableMods::default();

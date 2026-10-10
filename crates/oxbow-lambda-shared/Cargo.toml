@@ -1,5 +1,5 @@
 [package]
-name = "oxbow-lambda-shared"
+name = "buoyant-oxbow-lambda-shared"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true
@@ -19,5 +19,5 @@ serde_json = "=1"
 urlencoding = "=2"
 url = { workspace = true }
 
-oxbow = { path = "../oxbow" }
-oxbow-sqs = { path = "../oxbow-sqs" }
+buoyant-oxbow = { path = "../oxbow" }
+buoyant-oxbow-sqs = { path = "../oxbow-sqs" }

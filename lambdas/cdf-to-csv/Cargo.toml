@@ -18,7 +18,7 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
 csv = "1.3.1"
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+buoyant-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 
 [dev-dependencies]

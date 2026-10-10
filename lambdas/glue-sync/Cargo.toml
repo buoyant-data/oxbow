@@ -14,7 +14,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+buoyant-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 aws-sdk-glue = { workspace = true }
 aws-config = { workspace = true, features = ["behavior-version-latest"] }

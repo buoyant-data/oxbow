@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use std::collections::HashMap;
 
-use oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda_shared::*;
 
 /**
  * The `func` function is the main Lambda entrypoint and handles receiving the messages in order to

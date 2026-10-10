@@ -4,7 +4,7 @@
 use lambda_http::{Body, Error, Request, Response, run, service_fn, tracing};
 use tracing::log::*;
 
-use oxbow::write::*;
+use buoyant_oxbow::write::*;
 
 /// Main function handler which does the basics around HTTP management for the Lambda
 async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
@@ -25,7 +25,7 @@ async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
             match event.body() {
                 lambda_http::Body::Text(buf) => {
                     debug!("Deserializing body text and appending to {table_uri}");
-                    let table = oxbow::lock::open_table(&table_uri).await?;
+                    let table = buoyant_oxbow::lock::open_table(&table_uri).await?;
                     debug!("buffer: {buf}");
                     let lines: Vec<String> = buf.split("\n").map(|s| s.to_string()).collect();
                     let _ = append_values(table, lines).await?;

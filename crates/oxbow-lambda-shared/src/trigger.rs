@@ -21,7 +21,7 @@ static DV: OnceLock<Regex> = OnceLock::new();
 /// Create a trigger for a transaction log:
 ///
 /// ```
-/// use oxbow_lambda_shared::TableTrigger;
+/// use buoyant_oxbow_lambda_shared::TableTrigger;
 /// use url::Url;
 ///
 /// let location = Url::parse("s3://my-bucket/my-delta/_delta_log/00000000000000000001.json").unwrap();
@@ -171,7 +171,7 @@ impl From<&str> for Modification {
     /// Various S3 event types:
     ///
     /// ```
-    /// use oxbow_lambda_shared::Modification;
+    /// use buoyant_oxbow_lambda_shared::Modification;
     /// assert_eq!(Modification::Create, "ObjectCreated:Put".into());
     /// assert_eq!(Modification::Create, "ObjectCreated:Copy".into());
     /// assert_eq!(Modification::Delete, "ObjectRemoved:Delete".into());
@@ -209,7 +209,7 @@ impl ChangeType {
     /// Detect transaction logs:
     ///
     /// ```
-    /// use oxbow_lambda_shared::ChangeType;
+    /// use buoyant_oxbow_lambda_shared::ChangeType;
     /// let (kind, _) = ChangeType::from_key("mytable/_delta_log/00000000000000000001.json");
     /// if let ChangeType::TransactionLog { version } = kind { assert_eq!(version, 1); }
     /// ```
@@ -217,7 +217,7 @@ impl ChangeType {
     /// Detect parquet files:
     ///
     /// ```
-    /// use oxbow_lambda_shared::ChangeType;
+    /// use buoyant_oxbow_lambda_shared::ChangeType;
     /// let (kind, _) = ChangeType::from_key("mytable/part-00000-abc123.c000.snappy.parquet");
     /// assert!(matches!(kind, ChangeType::DataFile));
     /// ```
@@ -225,7 +225,7 @@ impl ChangeType {
     /// Detect change data feed (CDC):
     ///
     /// ```
-    /// use oxbow_lambda_shared::ChangeType;
+    /// use buoyant_oxbow_lambda_shared::ChangeType;
     /// let (kind, _) = ChangeType::from_key("mytable/_change_data/cdc-0000-abc123.c000.snappy.parquet");
     /// assert!(matches!(kind, ChangeType::ChangeDataFeed));
     /// ```
@@ -233,7 +233,7 @@ impl ChangeType {
     /// Detect deletion vectors:
     ///
     /// ```
-    /// use oxbow_lambda_shared::ChangeType;
+    /// use buoyant_oxbow_lambda_shared::ChangeType;
     /// let (kind, _) = ChangeType::from_key("mytable/deletion_vector-abc123.bin");
     /// assert!(matches!(kind, ChangeType::DeletionVector));
     /// ```

@@ -9,7 +9,7 @@ echo "=== oxbow-sqs Performance Analysis ==="
 
 # Build oxbow-sqs in release mode
 echo "Building oxbow-sqs in release mode..."
-cargo build --release -p oxbow-sqs
+cargo build --release -p buoyant-oxbow-sqs
 
 # Check for perf tool
 if ! command -v perf &> /dev/null; then
@@ -29,7 +29,7 @@ echo "Profiling memory allocation patterns..."
 # Profile memory allocations during oxbow-sqs operations
 # We'll use the library load as a proxy for memory analysis since we can't run AWS calls without config
 perf stat -e Cache-references,Cache-misses,LLC-loads,LLC-load-misses,major-faults,minor-faults,cpu-cycles,instructions,branches,branch-misses -o perf_results/memory_analysis.txt -- 
-  cargo test --release -p oxbow-sqs 2>/dev/null || echo "Test completed for memory profiling"
+  cargo test --release -p buoyant-oxbow-sqs 2>/dev/null || echo "Test completed for memory profiling"
 
 echo "Memory allocation analysis saved to: perf_results/memory_analysis.txt"
 
@@ -38,7 +38,7 @@ echo "Profiling CPU performance characteristics..."
 
 # Profile CPU performance - focus on the oxbow-sqs target library
 perf record -g --call-graph dwarf -o perf_results/cpu_profile.data -- 
-  cargo build --release -p oxbow-sqs 2>/dev/null
+  cargo build --release -p buoyant-oxbow-sqs 2>/dev/null
 
 echo "CPU performance profile saved to: perf_results/cpu_profile.data"
 

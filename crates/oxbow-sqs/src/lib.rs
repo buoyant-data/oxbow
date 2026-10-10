@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 /// Create a configuration using defaults from environment variables:
 ///
 /// ```rust,no_run
-/// use oxbow_sqs::ConsumerConfig;
+/// use buoyant_oxbow_sqs::ConsumerConfig;
 /// let cfg = ConsumerConfig::default(); // Will panic if BUFFER_MORE_QUEUE_URL env variable is missing
 /// ```
 #[derive(Clone, Debug)]
@@ -58,7 +58,7 @@ impl Default for ConsumerConfig {
 /// Set up a consumer with a custom deadline:
 ///
 /// ```no_run
-/// use oxbow_sqs::{TimedConsumer, ConsumerConfig};
+/// use buoyant_oxbow_sqs::{TimedConsumer, ConsumerConfig};
 /// use aws_config::SdkConfig;
 /// use std::time::Duration;
 ///

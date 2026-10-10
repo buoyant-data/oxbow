@@ -12,7 +12,7 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+buoyant-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 aws-config = { workspace = true, features = ["behavior-version-latest"] }
 aws-sdk-s3 = { workspace = true }

@@ -6,7 +6,7 @@ use tracing::log::*;
 
 use std::collections::HashMap;
 
-use oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda_shared::*;
 
 /// This is the main body for the function.
 async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {

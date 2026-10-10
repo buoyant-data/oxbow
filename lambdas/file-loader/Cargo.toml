@@ -8,9 +8,9 @@ homepage.workspace = true
 [dependencies]
 bytes = { workspace = true }
 lambda_runtime = { workspace = true }
-oxbow = { path = "../../crates/oxbow" }
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
-oxbow-sqs = { path = "../../crates/oxbow-sqs" }
+buoyant-oxbow = { path = "../../crates/oxbow" }
+buoyant-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+buoyant-oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 
 anyhow = { workspace = true }
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }

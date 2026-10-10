@@ -1,5 +1,5 @@
 [package]
-name = "oxbow-sqs"
+name = "buoyant-oxbow-sqs"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true

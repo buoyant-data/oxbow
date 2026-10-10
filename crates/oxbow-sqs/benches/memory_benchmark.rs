@@ -6,7 +6,7 @@
 //! - Performance characteristics with varying batch sizes
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use url::Url;

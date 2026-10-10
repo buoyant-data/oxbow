@@ -15,8 +15,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
-oxbow = { path = "../../crates/oxbow" }
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+buoyant-oxbow = { path = "../../crates/oxbow" }
+buoyant-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 dynamodb_lock = "0.6.1"
 lambda_runtime = { workspace = true }

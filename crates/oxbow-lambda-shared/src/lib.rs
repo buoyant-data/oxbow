@@ -15,7 +15,7 @@ use chrono::prelude::*;
 use deltalake::{DeltaResult, ObjectMeta, Path};
 use tracing::log::*;
 
-use oxbow::TableMods;
+use buoyant_oxbow::TableMods;
 use std::collections::HashMap;
 
 mod trigger;
@@ -261,11 +261,11 @@ pub fn extract_records_from(
     Ok(records_with_url_decoded_keys(&records))
 }
 
-/// Convert an [oxbow_sqs::Message] into an [aws_lambda_events::sqs::SqsMessage]
+/// Convert an [buoyant_oxbow_sqs::Message] into an [aws_lambda_events::sqs::SqsMessage]
 ///
-/// The [aws_lambda_events::sqs::SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
+/// The [aws_lambda_events::sqs::SqsMessage] and [buoyant_oxbow_sqs::Message] structs are mostly identical except one comes
 /// from Lambda triggers and the other directly from SQS.
-pub fn convert_from_sqs(message: oxbow_sqs::Message) -> aws_lambda_events::sqs::SqsMessage {
+pub fn convert_from_sqs(message: buoyant_oxbow_sqs::Message) -> aws_lambda_events::sqs::SqsMessage {
     aws_lambda_events::sqs::SqsMessage {
         message_id: message.message_id,
         receipt_handle: message.receipt_handle,

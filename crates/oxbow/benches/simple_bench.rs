@@ -1,5 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use oxbow::TableMods;
+use buoyant_oxbow::TableMods;
 
 fn benchmark_table_mods_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("TableMods Operations");

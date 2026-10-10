@@ -4,7 +4,7 @@ use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use regex::Regex;
 use tracing::log::*;
 
-use oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda_shared::*;
 
 /// Environment variable which defines the regular express to process a database and table from the
 /// key names

@@ -9,8 +9,8 @@ homepage.workspace = true
 http = "1.1.0"
 lambda_http = "0.13.0"
 
-oxbow = { path = "../../crates/oxbow" }
-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
+buoyant-oxbow = { path = "../../crates/oxbow" }
+buoyant-oxbow-lambda-shared = { path = "../../crates/oxbow-lambda-shared" }
 
 chrono = { workspace = true }
 deltalake = { workspace = true }

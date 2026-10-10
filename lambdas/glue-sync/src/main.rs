@@ -11,7 +11,7 @@ use regex::Regex;
 use tracing::log::*;
 use url::Url;
 
-use oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda_shared::*;
 use std::collections::HashMap;
 
 /// Environment variable which defines the regular express to process a database and table from the

@@ -7,8 +7,8 @@ homepage.workspace = true
 
 [dependencies]
 lambda_runtime = { workspace = true }
-oxbow = { path = "../../crates/oxbow" }
-oxbow-sqs = { path = "../../crates/oxbow-sqs" }
+buoyant-oxbow = { path = "../../crates/oxbow" }
+buoyant-oxbow-sqs = { path = "../../crates/oxbow-sqs" }
 
 aws_lambda_events = { workspace = true, default-features = false, features = ["sqs"] }
 aws-config = { workspace = true }

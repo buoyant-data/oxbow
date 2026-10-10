@@ -14,7 +14,7 @@ use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use stats_alloc::{INSTRUMENTED_SYSTEM, StatsAlloc};
 
-use oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda_shared::*;
 use tokio_stream::StreamExt;
 
 use deltalake::{ObjectStore, Path};
@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(suffix_from_record(&parquet), RecordType::Parquet);
     }
 
-    /// The [SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
+    /// The [SqsMessage] and [buoyant_oxbow_sqs::Message] structs are mostly identical except one comes
     /// from Lambda triggers and the other directly from SQS.
     ///
     /// This function makes sure that they can be interchanged
@@ -272,7 +272,7 @@ mod tests {
     fn test_sqs_event_compat() {
         let buf = std::fs::read_to_string("../../tests/data/s3-event-tables.json")
             .expect("Failed to read file");
-        let message = oxbow_sqs::Message::builder().body(buf.clone()).build();
+        let message = buoyant_oxbow_sqs::Message::builder().body(buf.clone()).build();
 
         let converted: SqsMessage = convert_from_sqs(message);
         assert_eq!(Some(buf), converted.body);

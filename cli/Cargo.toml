@@ -13,4 +13,4 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
 gumdrop = "=0.8"
-oxbow = { path = "../crates/oxbow" }
+buoyant-oxbow = { path = "../crates/oxbow" }

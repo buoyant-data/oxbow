@@ -12,8 +12,8 @@ use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 
 use aws_config;
-use oxbow_lambda_shared::*;
-use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use buoyant_oxbow_lambda_shared::*;
+use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::Mutex;
 
@@ -63,11 +63,11 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     // Millis to allow for consuming more messages
     let more_deadline_ms = ((event.context.deadline as u128) - fn_start_since_epoch_ms) / 2;
 
-    let mut table = oxbow::lock::open_table(&table_uri)
+    let mut table = buoyant_oxbow::lock::open_table(&table_uri)
         .await
         .expect("Failed to open the Delta table!");
     let mut writer = RecordBatchWriter::for_table(&table)?
-        .with_commit_properties(oxbow::default_commit_properties());
+        .with_commit_properties(buoyant_oxbow::default_commit_properties());
     let schema = writer.arrow_schema();
     info!("Schema for destination table: {schema:?}");
 
@@ -212,7 +212,7 @@ async fn deserialize_bytes(
             match decoder.flush()? {
                 Some(batch) => {
                     debug!("Writing a batch with {} rows", batch.num_rows());
-                    writer.write(oxbow::write::augment_with_ds(batch)?).await?;
+                    writer.write(buoyant_oxbow::write::augment_with_ds(batch)?).await?;
                     batches += 1;
                 }
                 // No more batches, exit!
@@ -349,7 +349,7 @@ mod tests {
         assert_eq!(suffix_from_record(&jsonl), RecordType::Jsonl);
     }
 
-    /// The [SqsMessage] and [oxbow_sqs::Message] structs are mostly identical except one comes
+    /// The [SqsMessage] and [buoyant_oxbow_sqs::Message] structs are mostly identical except one comes
     /// from Lambda triggers and the other directly from SQS.
     ///
     /// This function makes sure that they can be interchanged
@@ -357,7 +357,7 @@ mod tests {
     fn test_sqs_event_compat() {
         let buf = std::fs::read_to_string("../../tests/data/s3-event-tables.json")
             .expect("Failed to read file");
-        let message = oxbow_sqs::Message::builder().body(buf.clone()).build();
+        let message = buoyant_oxbow_sqs::Message::builder().body(buf.clone()).build();
 
         let converted: SqsMessage = convert_from_sqs(message);
         assert_eq!(Some(buf), converted.body);

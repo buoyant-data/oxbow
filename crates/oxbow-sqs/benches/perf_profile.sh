@@ -7,9 +7,9 @@ set -e
 
 echo "=== oxbow-sqs Performance Profiling ==="
 
-# Build the oxbow-sqs crate in release mode
+# Build the buoyant-oxbow-sqs crate in release mode
 echo "Building oxbow-sqs in release mode..."
-cargo build --release -p oxbow-sqs
+cargo build --release -p buoyant-oxbow-sqs
 
 # Check if perf is available
 if ! command -v perf &> /dev/null; then
@@ -54,7 +54,7 @@ async fn main() {
 RUST_EOF
 
 # Profile memory allocations with perf
-cargo build --release -p oxbow-sqs
+cargo build --release -p buoyant-oxbow-sqs
 perf stat -e cache-references,cache-misses,LLi-cache,major-faults,minor-faults,cpu-cycles,instructions -o perf_results/memory_stats.txt -- 
   timeout 10s /usr/bin/yes || true
 
@@ -89,7 +89,7 @@ async fn main() {
 RUST_EOF
 
 # Profile CPU performance
-cargo run --release -p oxbow-sqs --example test_cpu 2>/dev/null || true
+cargo run --release -p buoyant-oxbow-sqs --example test_cpu 2>/dev/null || true
 
 perf record -g --call-graph dwarf -o perf_results/cpu_performance.data -- 
   timeout 5s rustc --print=crate-name || true

@@ -7,8 +7,8 @@ use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use serde::Deserialize;
 use tracing::log::*;
 
-use oxbow::write::*;
-use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use buoyant_oxbow::write::*;
+use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
 
 use std::env;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -27,7 +27,7 @@ async fn function_handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     // Hold onto the instant that the function started in order to attempt to exit on time.
     let fn_start = Instant::now();
     trace!("payload received: {:?}", event.payload.records);
-    let table = oxbow::lock::open_table(&table_uri).await?;
+    let table = buoyant_oxbow::lock::open_table(&table_uri).await?;
 
     let config = aws_config::from_env().load().await;
     // Millis to allow for consuming more messages
@@ -183,7 +183,7 @@ fn extract_json_from_sqs_direct(
 }
 
 /// Convert the `body` payloads from [SqsMessage] entities into JSONL
-/// which can be passed into the [oxbow::write::append_values] function
+/// which can be passed into the [buoyant_oxbow::write::append_values] function
 fn extract_json_from_records(records: &[SqsMessage]) -> Box<dyn Iterator<Item = String> + '_> {
     if inside_sns() {
         Box::new(

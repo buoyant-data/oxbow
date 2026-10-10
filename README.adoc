@@ -83,15 +83,10 @@ operations, each designed for specific use cases.
 | Converts Delta Lake change data feed to CSV format
 | See link:lambdas/cdf-to-csv/README.adoc[cdf-to-csv docs]
 
-| link:lambdas/glue-create/README.adoc[glue-create]
-| Creates AWS Glue table entries for new Delta Lake tables
-| See link:lambdas/glue-create/README.adoc[glue-create docs]
-
-| link:lambdas/glue-sync/README.adoc[glue-sync]
-| Syncs AWS Glue Data Catalog schemas with Delta Lake table schemas
-| See link:lambdas/glue-sync/README.adoc[glue-sync docs]
-
 |===
+
+The `glue-create` and `glue-sync` Lambdas have been extracted to the
+`oxbow-glue` repository and are no longer maintained as part of oxbow.
 
 ==== Deployment
 

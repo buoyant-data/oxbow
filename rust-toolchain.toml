@@ -17,4 +17,5 @@
 
 [toolchain]
 channel = "1.97"
-components = ["rustfmt", "clippy"]
+profile = "default"
+components = ["cargo", "rustfmt", "clippy"]

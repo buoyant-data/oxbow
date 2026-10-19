@@ -25,35 +25,21 @@ pipeline {
         timeout(time: 2, unit: 'HOURS')
       }
       parallel {
-        stage('Crates - FreeBSD') {
+        stage('FreeBSD') {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -j2 -C crates build'
+            sh 'gmake -C crates build'
+            sh 'gmake -C lambdas build'
           }
         }
 
-        stage('Crates - Linux') {
+        stage('Linux') {
           agent { label 'linux' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -j4 -C crates build'
-          }
-        }
-
-        stage('Lambdas - FreeBSD') {
-          agent { label 'freebsd' }
-          steps {
-            sh './ci/setup.sh'
-            sh 'gmake -j2 -C lambdas build'
-          }
-        }
-
-        stage('Lambdas - Linux') {
-          agent { label 'linux' }
-          steps {
-            sh './ci/setup.sh'
-            sh 'gmake -j4 -C lambdas build'
+            sh 'gmake -C crates build'
+            sh 'gmake -C lambdas build'
           }
         }
       }
@@ -64,27 +50,20 @@ pipeline {
         timeout(time: 2, unit: 'HOURS')
       }
       parallel {
-        stage('Crates Test - FreeBSD') {
+        stage('FreeBSD') {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -j2 -C crates test'
+            sh 'gmake -C crates test'
           }
         }
 
-        stage('Crates Test - Linux') {
+        stage('Linux') {
           agent { label 'linux' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -j4 -C crates test'
-          }
-        }
-
-        stage('Lambdas Test - Linux') {
-          agent { label 'linux' }
-          steps {
-            sh './ci/setup.sh'
-            sh 'gmake -j4 -C lambdas test'
+            sh 'gmake -C crates test'
+            sh 'gmake -C lambdas test'
           }
         }
       }

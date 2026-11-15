@@ -1,4 +1,4 @@
-//! Memory and performance benchmarks for oxbow-sqs crate
+//! Memory and performance benchmarks for buoyant-oxbow-sqs crate
 //!
 //! This benchmark evaluates:
 //! - Message throughput under different configuration

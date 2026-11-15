@@ -1,6 +1,6 @@
 //! # Oxbow Lambda Shared Utilities
 //!
-//! oxbow-lambda-shared contains common helper functions and utilities for all oxbow related lambdas.
+//! buoyant-oxbow-lambda contains common helper functions and utilities for all oxbow related lambdas.
 //! This crate provides essential functions for processing S3 events, extracting Delta Lake table
 //! information, and handling various AWS event patterns.
 //!

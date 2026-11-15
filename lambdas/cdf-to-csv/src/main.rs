@@ -3,7 +3,7 @@
 //! produce CSV files to ingest into Aurora for Change Data Feeds
 
 use aws_lambda_events::event::sqs::SqsEvent;
-use buoyant_oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda::*;
 use deltalake::DeltaResult;
 use deltalake::arrow::datatypes::Schema;
 use deltalake::datafusion::common::parsers::CsvQuoteStyle;

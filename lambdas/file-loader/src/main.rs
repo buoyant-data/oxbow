@@ -12,7 +12,7 @@ use lambda_runtime::{Error, LambdaEvent, run, service_fn, tracing};
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 
 use aws_config;
-use buoyant_oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda::*;
 use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::Mutex;

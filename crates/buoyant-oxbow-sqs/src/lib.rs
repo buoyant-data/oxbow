@@ -1,11 +1,11 @@
 //!
-//! The oxbow-sqs crate helps different lambda functions in the oxbow ecosystem use Amazon SQS as a
+//! The buoyant-oxbow-sqs crate helps different lambda functions in the oxbow ecosystem use Amazon SQS as a
 //! signaling mechanism without relying on the Lambda trigger to deliver all the data from SQS.
 //!
 //! This is helpful when applications need finer grained control on data retrieval or need to pull
 //! in more than the 6MB limit of data that Lambda triggers provide for.
 //!
-//! From a design standpoint oxbow-sqs should allow functions to have a batch size of **1** and
+//! From a design standpoint buoyant-oxbow-sqs should allow functions to have a batch size of **1** and
 //! then allow them to consume some optional number of messages until a time-based or other
 //! threshold.
 //!

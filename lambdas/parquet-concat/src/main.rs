@@ -14,7 +14,7 @@ use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use stats_alloc::{INSTRUMENTED_SYSTEM, StatsAlloc};
 
-use buoyant_oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda::*;
 use tokio_stream::StreamExt;
 
 use deltalake::{ObjectStore, Path};

@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Performance profiling script for oxbow-sqs
+# Performance profiling script for buoyant-oxbow-sqs
 # This script uses perf to analyze memory usage and CPU behavior
 
 set -e
 
-echo "=== oxbow-sqs Performance Profiling ==="
+echo "=== buoyant-oxbow-sqs Performance Profiling ==="
 
 # Build the buoyant-oxbow-sqs crate in release mode
-echo "Building oxbow-sqs in release mode..."
+echo "Building buoyant-oxbow-sqs in release mode..."
 cargo build --release -p buoyant-oxbow-sqs
 
 # Check if perf is available
@@ -28,7 +28,7 @@ echo "Capturing memory allocations for 10 seconds..."
 
 # Build a simple test target for profiling
 cat > /tmp/test_memory.rs << 'RUST_EOF'
-use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use std::time::Duration;
 
 #[tokio::main]
@@ -63,7 +63,7 @@ echo "Capturing CPU performance for message processing..."
 
 # Create a CPU-intensive benchmark target
 cat > /tmp/test_cpu.rs << 'RUST_EOF'
-use oxbow_sqs::{ConsumerConfig, TimedConsumer};
+use buoyant_oxbow_sqs::{ConsumerConfig, TimedConsumer};
 use std::time::Duration;
 
 #[tokio::main]
@@ -98,7 +98,7 @@ echo "=== Generating Flame Graphs ==="
 
 # Generate flame graph from perf data
 if command -v flamegraph &> /dev/null; then
-    perf script | flamegraph --title="oxbow-sqs CPU Flame Graph" > perf_results/cpu_flamegraph.svg
+    perf script | flamegraph --title="buoyant-oxbow-sqs CPU Flame Graph" > perf_results/cpu_flamegraph.svg
     echo "Flame graph generated: perf_results/cpu_flamegraph.svg"
 else
     echo "flamegraph tool not found. Install with: cargo install flamegraph"
@@ -112,7 +112,7 @@ echo "CPU performance data saved to: perf_results/cpu_performance.data"
 
 # Generate summary report
 cat > perf_results/REPORT.md << 'EOF'
-# oxbow-sqs Performance Analysis Report
+# buoyant-oxbow-sqs Performance Analysis Report
 
 ## Memory Usage Summary
 - Cache references and misses highlight memory bottleneck

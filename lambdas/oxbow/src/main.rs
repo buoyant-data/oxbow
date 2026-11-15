@@ -1,7 +1,7 @@
 ///
 /// The oxbow lambda crate contains the Lambda-specific handling of the Oxbow lambda
 ///
-/// While most of the key logic does exist in the oxbow and oxbow-lambda-shared crates, this
+/// While most of the key logic does exist in the oxbow and buoyant-oxbow-lambda crates, this
 /// function glues that into the Lambda runtime
 use aws_lambda_events::sqs::SqsEvent;
 use deltalake::DeltaTableError;
@@ -10,7 +10,7 @@ use serde_json::Value;
 use tracing::log::*;
 use url::Url;
 
-use buoyant_oxbow_lambda_shared::*;
+use buoyant_oxbow_lambda::*;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

@@ -25,7 +25,7 @@ clean: ## Clean up resources from build
 	cargo clean
 
 perf: ## Run performance benchmarks
-	(cd crates/oxbow && make bench)
+	(cd crates/buoyant-oxbow && make bench)
 
 # Terraform targets
 .PHONY: terraform-init

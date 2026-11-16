@@ -42,8 +42,37 @@ on:
       - '*-?v[0-9]+*'
 
 jobs:
+  # Publish the library crates to crates.io before anything else is built.
+  # Crates are published in dependency order; buoyant-oxbow must come first
+  # since the other crates depend on it.
+  publish-crates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Authenticate with crates.io
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish buoyant-oxbow
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --package buoyant-oxbow
+      - name: Publish buoyant-oxbow-sqs
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --package buoyant-oxbow-sqs
+      - name: Publish buoyant-oxbow-lambda
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --package buoyant-oxbow-lambda
+
   # Create the Github Release™ so the packages have something to be uploaded to
   create-release:
+    needs: publish-crates
     runs-on: ubuntu-latest
     outputs:
       has-releases: ${{ steps.create-release.outputs.has-releases }}

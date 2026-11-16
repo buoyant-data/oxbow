@@ -29,8 +29,9 @@ pipeline {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C crates build'
-            sh 'gmake -C lambdas build'
+            // protoc-bin-vendored has no FreeBSD binary, so use the system protoc
+            sh 'PROTOC="$(command -v protoc)" gmake -C crates build'
+            sh 'PROTOC="$(command -v protoc)" gmake -C lambdas build'
           }
         }
 
@@ -54,7 +55,8 @@ pipeline {
           agent { label 'freebsd' }
           steps {
             sh './ci/setup.sh'
-            sh 'gmake -C crates test'
+            // protoc-bin-vendored has no FreeBSD binary, so use the system protoc
+            sh 'PROTOC="$(command -v protoc)" gmake -C crates test'
           }
         }
 

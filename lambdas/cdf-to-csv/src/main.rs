@@ -513,7 +513,7 @@ mod tests {
         assert_eq!(
             lines[3].as_ref().expect("Failure"),
             r#""209","149",":-\\","1.0","""#,
-            "The CSV output was not what we expected"
+            "The CSV output was not what we expected:\n{lines:?}"
         );
 
         let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;

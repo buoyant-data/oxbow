@@ -247,6 +247,7 @@ mod tests {
     use deltalake::logstore::object_store::{ObjectStore, memory::InMemory};
     use futures::StreamExt;
 
+    use deltalake::arrow::util::pretty::pretty_format_batches;
     use deltalake::datafusion::{
         common::assert_batches_sorted_eq, dataframe::DataFrameWriteOptions,
     };
@@ -492,7 +493,6 @@ mod tests {
             )
             .await?;
         let written = df.clone();
-        let written_schema = written.schema();
         df = escape_dataframe(df)?;
 
         df.write_csv(
@@ -510,14 +510,46 @@ mod tests {
             lines.len(),
             "Should have only written four lines for the sample input data"
         );
-        assert_eq!(
-            lines[3].as_ref().expect("Failure"),
-            r#""209","149",":-\\","1.0","""#,
-            "The CSV output was not what we expected:\n{lines:?}"
-        );
+
+        // Column order is not what this test checks, so compare by column name. Schema
+        // inference does not guarantee the same ordering across DataFusion versions.
+        let mut names: Vec<String> = written
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect();
+        names.sort();
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
 
         let df = ctx.read_csv(tempfile, CsvReadOptions::default()).await?;
-        assert_eq!(written_schema.as_arrow(), df.schema().as_arrow());
+        let written_arrow = written.schema().as_arrow().clone();
+        let read_arrow = df.schema().as_arrow().clone();
+        for name in &names {
+            assert_eq!(
+                written_arrow.field_with_name(name)?.data_type(),
+                read_arrow.field_with_name(name)?.data_type(),
+                "Data type mismatch for column {name}"
+            );
+        }
+
+        let expected = escape_dataframe(written)?
+            .select_columns(&names)?
+            .collect()
+            .await?;
+        let actual = df.select_columns(&names)?.collect().await?;
+        let expected = pretty_format_batches(&expected)?.to_string();
+        let actual = pretty_format_batches(&actual)?.to_string();
+        let sorted = |s: &str| {
+            let mut lines: Vec<String> = s.lines().map(str::to_owned).collect();
+            lines.sort();
+            lines
+        };
+        assert_eq!(
+            sorted(&expected),
+            sorted(&actual),
+            "The CSV output was not what we expected"
+        );
 
         unsafe {
             std::env::remove_var("CSV_ESCAPE_FORWARD_SLASH");

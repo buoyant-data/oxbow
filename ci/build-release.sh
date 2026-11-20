@@ -14,8 +14,14 @@ fi;
 
 . venv/bin/activate
 
-PLATFORMS=("x86-64" "arm64")
-#PLATFORMS=("x86-64")
+# Space-separated list of platforms to build, overridable at runtime, e.g.
+# PLATFORMS="arm64" ./ci/build-release.sh
+PLATFORMS="${PLATFORMS:-x86-64 arm64}"
+read -ra PLATFORM_LIST <<< "${PLATFORMS}"
+
+# Cargo build profile for `cargo lambda build --profile`. Must match a
+# [profile.<name>] section in the root Cargo.toml (release, dist, ciexist).
+BUILD_PROFILE="${BUILD_PROFILE:-release}"
 
 for d in $(ls ./lambdas); do
         if [ ! -d "./lambdas/${d}" ]; then
@@ -28,9 +34,9 @@ for d in $(ls ./lambdas); do
                         d="oxbow-lambda";
                 fi
 
-                for p in ${PLATFORMS[@]}; do
+                for p in ${PLATFORM_LIST[@]}; do
                         echo ">> ${p}"
-                        time cargo lambda build --package ${d} --release --output-format zip --${p} --lambda-dir target/lambda/${p}
+                        time cargo lambda build --package ${d} --profile ${BUILD_PROFILE}  --output-format zip --${p} --lambda-dir target/lambda/${p}
                         mv target/lambda/${p}/${d}/bootstrap.zip target/lambda/${d}-${p}.zip
                 done;
         fi;

@@ -5,7 +5,7 @@ edition.workspace = true
 keywords.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description.workspace = true
+description = "Use Amazon SQS as a signaling mechanism for oxbow Lambda functions and Delta Lake processing"
 license-file.workspace = true
 
 [dependencies]

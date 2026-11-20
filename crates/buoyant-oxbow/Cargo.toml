@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Core Delta Lake table operations for the oxbow toolbox: converting and loading data into Delta tables"
+keywords.workspace = true
+license-file.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
@@ -18,7 +21,7 @@ futures = "0.3.29"
 
 [dev-dependencies]
 fs_extra = "=1"
-tempfile = "*"
+tempfile = "3.27.0"
 tokio = { workspace = true }
 criterion = "0.5"
 parquet = { workspace = true }

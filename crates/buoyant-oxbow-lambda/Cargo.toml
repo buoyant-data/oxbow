@@ -5,7 +5,7 @@ edition.workspace = true
 keywords.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description.workspace = true
+description = "Shared helpers for oxbow Lambda functions: S3 and SQS event parsing and Delta table info extraction"
 license-file.workspace = true
 
 [dependencies]
@@ -19,5 +19,5 @@ serde_json = "=1"
 urlencoding = "=2"
 url = { workspace = true }
 
-buoyant-oxbow = { path = "../buoyant-oxbow" }
-buoyant-oxbow-sqs = { path = "../buoyant-oxbow-sqs" }
+buoyant-oxbow = { version = "2.0.0", path = "../buoyant-oxbow" }
+buoyant-oxbow-sqs = { version = "2.0.0", path = "../buoyant-oxbow-sqs" }

@@ -1,0 +1,37 @@
+name: Acceptance
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install Zig toolchain
+        uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 0.10.0
+      - name: Install Cargo Lambda
+        uses: jaxxstorm/action-install-gh-release@v1.9.0
+        with:
+          repo: cargo-lambda/cargo-lambda
+          platform: linux
+          arch: x86_64
+      - name: Set up the acceptance test environment
+        run: ./ci/setup.sh
+      - name: Build release lambda artifacts
+        run: make acceptance-build
+      - name: Run acceptance tests against LocalStack
+        # ubuntu-latest provides Docker, not podman, so override the compose
+        # command and the container socket used by compose.yml
+        run: make acceptance ACCEPTANCE_COMPOSE="docker compose" CONTAINER_SOCKET=/var/run/docker.sock

@@ -10,14 +10,14 @@ if [ $? -ne 0 ]; then
         cargo install cargo-lambda
 fi;
 
-which virtualenv
-
-if [ $? -ne 0 ]; then
-        echo ">> Virtualenv is required in order to setup cargo-lambda here!"
-        exit 1;
+# Prefer virtualenv when it is installed, otherwise use the stdlib venv module
+# (hosted runners such as GitHub Actions do not ship the virtualenv command)
+if command -v virtualenv >/dev/null 2>&1; then
+        virtualenv venv
+else
+        python3 -m venv venv
 fi;
-
-virtualenv venv
 
 source venv/bin/activate
 pip install ziglang
+pip install boto3 pytest

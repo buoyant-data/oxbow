@@ -29,16 +29,18 @@ perf: ## Run performance benchmarks
 
 # Acceptance tests run the lambdas against LocalStack. See acceptance/ and compose.yml.
 # The lambda artifacts are built with the release profile (LocalStack rejects zips over 50MB).
+# CI overrides ACCEPTANCE_COMPOSE (e.g. `docker compose`) and CONTAINER_SOCKET (see compose.yml).
+ACCEPTANCE_COMPOSE ?= podman compose
 .PHONY: acceptance acceptance-up acceptance-down acceptance-build acceptance-test acceptance-logs
 
 acceptance: acceptance-up ## Start LocalStack, run the acceptance tests, then stop LocalStack
-	@$(MAKE) acceptance-test; status=$$?; $(MAKE) acceptance-down; exit $$status
+	@$(MAKE) acceptance-test; status=$$?; if [ $$status -ne 0 ]; then $(ACCEPTANCE_COMPOSE) logs localstack | tail -n 200; fi; $(MAKE) acceptance-down; exit $$status
 
 acceptance-up: ## Start the LocalStack container used by the acceptance tests
-	podman compose up -d --wait
+	$(ACCEPTANCE_COMPOSE) up -d --wait
 
 acceptance-down: ## Stop the LocalStack container used by the acceptance tests
-	podman compose down
+	$(ACCEPTANCE_COMPOSE) down
 
 acceptance-build: ## Build the release lambda artifacts used by the acceptance tests
 	. venv/bin/activate && cargo lambda build --package oxbow-lambda --profile release --output-format zip --x86-64 --lambda-dir target/lambda/x86-64
@@ -48,7 +50,7 @@ acceptance-test: ## Run the acceptance tests against a running LocalStack (see a
 	./acceptance/run.sh
 
 acceptance-logs: ## Tail the LocalStack container logs
-	podman compose logs -f localstack
+	$(ACCEPTANCE_COMPOSE) logs -f localstack
 
 # Terraform targets
 .PHONY: terraform-init

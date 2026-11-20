@@ -76,6 +76,20 @@ pipeline {
       }
     }
 
+    stage('Acceptance') {
+      options {
+        timeout(time: 1, unit: 'HOURS')
+      }
+      // LocalStack runs the lambdas in containers, so this stage needs a Linux
+      // agent with a container engine. It is not run on FreeBSD.
+      agent { label 'linux' }
+      steps {
+        sh './ci/setup.sh'
+        sh 'gmake acceptance-build'
+        sh 'gmake acceptance'
+      }
+    }
+
     stage('Release') {
       failFast true
       when { branch 'main' }

@@ -43,7 +43,16 @@ pub fn client_for(table_name: &str) -> dynamodb_lock::DynamoDbLockClient {
         partition_key_value: table_name.into(),
         ..Default::default()
     };
-    dynamodb_lock::DynamoDbLockClient::for_region(Region::default()).with_options(lock_options)
+    // Honor AWS_ENDPOINT_URL so the lock table can be served by LocalStack in
+    // acceptance tests. Unset in production, where the default AWS endpoint is used.
+    let region = match std::env::var("AWS_ENDPOINT_URL") {
+        Ok(endpoint) if !endpoint.is_empty() => Region::Custom {
+            name: std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into()),
+            endpoint,
+        },
+        _ => Region::default(),
+    };
+    dynamodb_lock::DynamoDbLockClient::for_region(region).with_options(lock_options)
 }
 
 /**

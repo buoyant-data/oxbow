@@ -67,11 +67,13 @@ pipeline {
             sh 'gmake -C crates test'
             sh 'gmake -C lambdas test'
           }
-        }
-      }
-      post {
-        success {
-          junit testResults: 'target/nextest/ci/junit.xml', allowEmptyResults: false
+          post {
+            success {
+              // Publish from the node that produced the report: a stage-level
+              // post runs under `agent none` and cannot use junit there.
+              junit testResults: 'target/nextest/ci/junit.xml', allowEmptyResults: false
+            }
+          }
         }
       }
     }

@@ -27,6 +27,29 @@ clean: ## Clean up resources from build
 perf: ## Run performance benchmarks
 	(cd crates/buoyant-oxbow && make bench)
 
+# Acceptance tests run the lambdas against LocalStack. See acceptance/ and compose.yml.
+# The lambda artifacts are built with the release profile (LocalStack rejects zips over 50MB).
+.PHONY: acceptance acceptance-up acceptance-down acceptance-build acceptance-test acceptance-logs
+
+acceptance: acceptance-up ## Start LocalStack, run the acceptance tests, then stop LocalStack
+	@$(MAKE) acceptance-test; status=$$?; $(MAKE) acceptance-down; exit $$status
+
+acceptance-up: ## Start the LocalStack container used by the acceptance tests
+	podman compose up -d --wait
+
+acceptance-down: ## Stop the LocalStack container used by the acceptance tests
+	podman compose down
+
+acceptance-build: ## Build the release lambda artifacts used by the acceptance tests
+	. venv/bin/activate && cargo lambda build --package oxbow-lambda --profile release --output-format zip --x86-64 --lambda-dir target/lambda/x86-64
+	. venv/bin/activate && cargo lambda build --package sqs-ingest --profile release --output-format zip --x86-64 --lambda-dir target/lambda/x86-64
+
+acceptance-test: ## Run the acceptance tests against a running LocalStack (see acceptance-up)
+	./acceptance/run.sh
+
+acceptance-logs: ## Tail the LocalStack container logs
+	podman compose logs -f localstack
+
 # Terraform targets
 .PHONY: terraform-init
 terraform-init:

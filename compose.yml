@@ -1,0 +1,33 @@
+#
+# LocalStack services for end-to-end acceptance testing of the oxbow lambdas.
+#
+# Usage:
+#   podman compose up -d
+#   ./acceptance/run.sh
+#
+# Pinned to the 3.x community image: newer LocalStack releases require an auth token.
+# Lambda execution inside LocalStack launches containers through the container
+# runtime socket, so the rootless podman socket is mounted. LocalStack is
+# pointed at it via DOCKER_HOST inside the container.
+#
+services:
+  localstack:
+    image: docker.io/localstack/localstack:3
+    container_name: oxbow-localstack
+    ports:
+      # Host port is configurable because 4566 is commonly held by other LocalStack projects
+      - "127.0.0.1:${LOCALSTACK_PORT:-4567}:4566"
+    environment:
+      - SERVICES=s3,lambda,sqs,dynamodb,iam,logs
+      - DEBUG=0
+      - LAMBDA_EXECUTOR=docker
+      - AWS_DEFAULT_REGION=us-east-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock:/var/run/docker.sock"
+      - "${LOCALSTACK_VOLUME_DIR:-./target/localstack}:/var/lib/localstack"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

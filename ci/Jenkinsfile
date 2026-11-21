@@ -82,9 +82,14 @@ pipeline {
       options {
         timeout(time: 1, unit: 'HOURS')
       }
-      // LocalStack runs the lambdas in containers, so this stage needs a Linux
-      // agent with a container engine. It is not run on FreeBSD.
-      agent { label 'linux' }
+      // LocalStack runs the lambdas in containers, so this stage needs an agent
+      // with a running Docker daemon. The `docker` label is used for that; it is
+      // not run on FreeBSD. Compose is driven through docker, not podman.
+      agent { label 'docker' }
+      environment {
+        ACCEPTANCE_COMPOSE = 'docker compose'
+        CONTAINER_SOCKET = '/var/run/docker.sock'
+      }
       steps {
         sh './ci/setup.sh'
         sh 'gmake acceptance-build'
